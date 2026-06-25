@@ -1,5 +1,27 @@
 # @orbidicom/core
 
+## 0.3.0
+
+### Minor Changes
+
+- LocalDataSource now renders encapsulated-PDF reports from local `.dcm` files. Previously
+  only the DICOMweb source handled encapsulated PDFs; the local reader dropped any instance
+  without PixelData at ingestion, so a PDF report opened offline (`npx orbidicom`, drag-drop)
+  silently vanished. `LocalDataSource` now detects encapsulated PDFs (Encapsulated PDF Storage
+  SOP class, or any instance carrying an `EncapsulatedDocument` `0042,0011`), retains their
+  bytes, advertises `capabilities.encapsulatedPdf`, and implements `listPdfs` / `getPdfObjectUrl`
+  — matching the DICOMweb contract, so the viewer renders them with no UI change.
+
+- Render DICOM Structured Reports (SR). SR series are no longer filtered out — they're
+  parsed into a normalized `SrTree` and shown as a readable, indented document. The
+  `DataSource` interface gains a generalized report surface (`listReports`,
+  `getStructuredReport`, `ReportInstance`, `capabilities.reports`) alongside the
+  existing PDF hooks; `DicomWebDataSource` parses the SR Content Sequence already inline
+  in WADO-RS metadata (no extra fetch). The new `SrView` renders the tree with escaped
+  interpolation (no `v-html`), themed from CSS tokens, with SR error/placeholder i18n in
+  all four locales. Core text value types (CONTAINER/TEXT/NUM/CODE/DATE/TIME/PNAME/UIDREF)
+  render fully; spatial/image/waveform types show a labeled placeholder for now.
+
 ## 0.2.1
 
 ### Patch Changes

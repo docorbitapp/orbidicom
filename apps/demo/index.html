@@ -4,11 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>OrbiDICOM</title>
+    <!-- Oxygen for the header wordmark (the toolbar title). -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Oxygen:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <div id="app"></div>
-    <!-- Runtime config (PACS URL etc.); regenerated from env at container start. -->
-    <script src="./config.js"></script>
+    <!-- Runtime config (PACS URL etc.) is injected as ./config.js by the
+         orbidicom-runtime-config Vite plugin (see vite.config.ts); it's a
+         classic, per-deploy-generated global, so it must stay un-bundled. -->
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -23,4 +23,31 @@ describe("configScript", () => {
     expect(js).toContain('pacsUrl: "https://x/; alert(1);//"');
     expect(js).toContain('studyUid: "abc"');
   });
+
+  it("emits no auth block by default (so the source defaults to none/same-origin)", () => {
+    expect(configScript({})).not.toContain("auth:");
+    expect(configScript({ auth: "none" })).not.toContain("auth:");
+  });
+
+  it("embeds cookie auth", () => {
+    expect(configScript({ auth: "cookie" })).toContain('auth: { kind: "cookie" }');
+  });
+
+  it("embeds bearer auth with a token", () => {
+    expect(configScript({ auth: "bearer", token: "abc123" })).toContain(
+      'auth: { kind: "bearer", token: "abc123" }',
+    );
+  });
+
+  it("embeds basic auth with username/password", () => {
+    expect(configScript({ auth: "basic", username: "u", password: "p" })).toContain(
+      'auth: { kind: "basic", username: "u", password: "p" }',
+    );
+  });
+
+  it("sanitizes auth values so they can't break out of the literal", () => {
+    const js = configScript({ auth: "bearer", token: 'x"; alert(1);//' });
+    expect(js).toContain('token: "x; alert(1);//"');
+    expect(js).not.toMatch(/[\r\n]\s*alert/);
+  });
 });

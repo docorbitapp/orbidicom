@@ -34,4 +34,15 @@ describe("mergeConfig", () => {
   it("defaults to empty strings when nothing is configured", () => {
     expect(mergeConfig({}, "")).toEqual({ pacsUrl: "", studyUid: "" });
   });
+
+  it("carries auth through from the base config but never from query params", () => {
+    const base = {
+      pacsUrl: "/dicom-web",
+      auth: { kind: "bearer", token: "secret" } as const,
+    };
+    // A crafted ?auth= must not override or inject auth (it's not a query key).
+    const merged = mergeConfig(base, "?auth=none&pacs=/x");
+    expect(merged.auth).toEqual({ kind: "bearer", token: "secret" });
+    expect(merged.pacsUrl).toBe("/x"); // pacs/study stay overridable
+  });
 });

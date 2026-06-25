@@ -21,4 +21,18 @@ describe("parseArgs", () => {
     expect(parseArgs(["ai"]).command).toBe("ai");
     expect(parseArgs(["init"]).command).toBe("init");
   });
+
+  it("parses --auth with bearer --token", () => {
+    const o = parseArgs(["--pacs", "/dicom-web", "--auth", "bearer", "--token", "abc"]);
+    expect(o.auth).toBe("bearer");
+    expect(o.token).toBe("abc");
+  });
+
+  it("parses --auth basic with --username/--password and --auth cookie", () => {
+    const b = parseArgs(["--auth", "basic", "--username", "u", "--password", "p"]);
+    expect(b.auth).toBe("basic");
+    expect(b.username).toBe("u");
+    expect(b.password).toBe("p");
+    expect(parseArgs(["--auth", "cookie"]).auth).toBe("cookie");
+  });
 });

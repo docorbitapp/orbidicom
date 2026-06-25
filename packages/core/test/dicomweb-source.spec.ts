@@ -53,11 +53,25 @@ describe("authHeaders", () => {
 });
 
 describe("DicomWebDataSource", () => {
-  it("lists renderable series, sorted by SeriesNumber, dropping SR/PR/KO/PLAN", async () => {
+  it("lists image + SR report series, sorted by SeriesNumber (SR is rendered, not dropped)", async () => {
     const ds = new DicomWebDataSource({ root: "/pacs/dicom-web", client: fakeClient as never });
     const series = await ds.getSeries(["study-1"]);
-    expect(series.map((s) => s.seriesInstanceUID)).toEqual(["S1", "S2"]);
+    expect(series.map((s) => s.seriesInstanceUID)).toEqual(["S1", "S2", "SR1"]);
     expect(series[0]).toMatchObject({ modality: "CT", seriesDescription: "Scout" });
+  });
+
+  it("still drops non-renderable, non-report modalities (PR/KO/PLAN)", async () => {
+    const koClient = {
+      searchForSeries: vi.fn(async () => [
+        { "0020000E": V("PR1"), "00080060": V("PR"), "00200011": V("1") },
+        { "0020000E": V("KO1"), "00080060": V("KO"), "00200011": V("2") },
+        { "0020000E": V("CT1"), "00080060": V("CT"), "00200011": V("3"), "00201209": V("5") },
+      ]),
+      retrieveSeriesMetadata: vi.fn(async () => []),
+    };
+    const ds = new DicomWebDataSource({ root: "/pacs/dicom-web", client: koClient as never });
+    const series = await ds.getSeries(["study-1"]);
+    expect(series.map((s) => s.seriesInstanceUID)).toEqual(["CT1"]);
   });
 
   it("getImageIds orders by InstanceNumber, expands frames, registers root-aware metadata", async () => {
@@ -116,6 +130,18 @@ describe("DicomWebDataSource encapsulated PDFs", () => {
     return out.buffer;
   }
 
+  it("lists a DOC (encapsulated-PDF report) series — report modalities are NOT filtered", async () => {
+    // Regression guard: a standalone DOC report series (Modality DOC, its own
+    // Series UID — the common encapsulated-PDF shape) must appear in the rail.
+    // DOC/OT are deliberately absent from NON_RENDERABLE_MODALITIES. If a DOC
+    // series is missing from the viewer, the QIDO /series response lacked it, not
+    // this code.
+    const ds = new DicomWebDataSource({ root: "/pacs/dicom-web", client: pdfClient as never });
+    const series = await ds.getSeries(["study-1"]);
+    expect(series.map((s) => s.seriesInstanceUID)).toContain("DOC1");
+    expect(series.find((s) => s.seriesInstanceUID === "DOC1")).toMatchObject({ modality: "DOC" });
+  });
+
   it("excludes PDFs from imageIds and exposes them via listPdfs", async () => {
     const ds = new DicomWebDataSource({ root: "/pacs/dicom-web", client: pdfClient as never });
     const series = { seriesInstanceUID: "DOC1", studyInstanceUID: "study-1" };
@@ -164,5 +190,49 @@ describe("DicomWebDataSource encapsulated PDFs", () => {
     } finally {
       globalThis.URL.createObjectURL = origCreate;
     }
+  });
+});
+
+describe("DicomWebDataSource structured reports", () => {
+  const seq = (...items: Record<string, unknown>[]) => ({ Value: items });
+  const code = (val: string, scheme: string, meaning: string) => ({
+    "00080100": V(val),
+    "00080102": V(scheme),
+    "00080104": V(meaning),
+  });
+  const srClient = {
+    searchForSeries: vi.fn(async () => [
+      { "0020000E": V("SR1"), "00080060": V("SR"), "00200011": V("9"), "0008103E": V("Report") },
+    ]),
+    retrieveSeriesMetadata: vi.fn(async () => [
+      {
+        "00080018": V("sr-sop"),
+        "00080016": V("1.2.840.10008.5.1.4.1.1.88.11"), // Basic Text SR
+        "00200013": V("1"),
+        "0040A040": V("CONTAINER"),
+        "0040A043": seq(code("111060", "DCM", "Report")),
+        "0040A730": seq({
+          "0040A010": V("CONTAINS"),
+          "0040A040": V("TEXT"),
+          "0040A043": seq(code("121071", "DCM", "Finding")),
+          "0040A160": V("No acute abnormality."),
+        }),
+      },
+    ]),
+  };
+
+  it("excludes SR from imageIds, lists it as a report, and parses getStructuredReport", async () => {
+    const ds = new DicomWebDataSource({ root: "/pacs/dicom-web", client: srClient as never });
+    const series = { seriesInstanceUID: "SR1", studyInstanceUID: "study-1" };
+    expect(await ds.getImageIds(series)).toEqual([]); // SR carries no pixel frames
+    expect(ds.listReports!(series)).toEqual([
+      expect.objectContaining({ sopUid: "sr-sop", kind: "sr" }),
+    ]);
+    const tree = await ds.getStructuredReport!(series, { sopUid: "sr-sop", kind: "sr" });
+    expect(tree.title).toBe("Report");
+    expect(tree.root.children[0]).toMatchObject({
+      valueType: "TEXT",
+      text: "No acute abnormality.",
+    });
   });
 });

@@ -45,6 +45,20 @@ spec:
               value: {{ .Values.pacs.url | quote }}
             - name: ORBIDICOM_STUDY_UID
               value: {{ .Values.pacs.studyUid | quote }}
+            - name: ORBIDICOM_AUTH_KIND
+              value: {{ .Values.pacs.auth.kind | default "none" | quote }}
+            {{- if .Values.pacs.auth.token }}
+            - name: ORBIDICOM_AUTH_TOKEN
+              value: {{ .Values.pacs.auth.token | quote }}
+            {{- end }}
+            {{- if .Values.pacs.auth.username }}
+            - name: ORBIDICOM_AUTH_USERNAME
+              value: {{ .Values.pacs.auth.username | quote }}
+            {{- end }}
+            {{- if .Values.pacs.auth.password }}
+            - name: ORBIDICOM_AUTH_PASSWORD
+              value: {{ .Values.pacs.auth.password | quote }}
+            {{- end }}
             {{- if .Values.pacs.proxy.enabled }}
             - name: ORBIDICOM_PACS_UPSTREAM
               value: {{ .Values.pacs.proxy.upstream | quote }}

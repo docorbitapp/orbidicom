@@ -62,8 +62,10 @@
           >
             <div :ref="(el) => setEl(i - 1, el)" class="cs-viewport" />
 
-            <!-- Encapsulated-PDF report series render here instead of an image stack. -->
+            <!-- Report series render here instead of an image stack: encapsulated
+                 PDF via PdfView, DICOM Structured Report via SrView. -->
             <PdfView v-if="pdfUrl[i - 1]" :src="pdfUrl[i - 1]!" />
+            <SrView v-else-if="srTree[i - 1]" :tree="srTree[i - 1]!" />
 
             <Overlay
               v-if="overlayOn && sliceCount[i - 1]"
@@ -151,6 +153,7 @@ import Controls from "./Controls.vue";
 import Overlay from "./Overlay.vue";
 import MetaPanel from "./MetaPanel.vue";
 import PdfView from "./PdfView.vue";
+import SrView from "./SrView.vue";
 import {
   initCornerstone,
   setPrimaryTool,
@@ -166,6 +169,7 @@ import type {
   SeriesSummary,
   ImageMetadata,
   MetaGroup,
+  SrTree,
 } from "@orbidicom/core";
 import { t } from "../i18n";
 
@@ -217,6 +221,8 @@ const cellLoading = reactive<boolean[]>(fill(false));
 const cinePlaying = reactive<boolean[]>(fill(false));
 // Object URL of the encapsulated PDF shown in a cell (null = image/empty cell).
 const pdfUrl = reactive<(string | null)[]>(fill<string | null>(null));
+// Parsed Structured Report shown in a cell (null = not an SR cell).
+const srTree = reactive<(SrTree | null)[]>(fill<SrTree | null>(null));
 // Background warm-up (stackPrefetch) progress per cell, driving the top loader bar.
 const prefetchLoaded = reactive<number[]>(fill(0));
 const prefetchTotal = reactive<number[]>(fill(0));
@@ -329,9 +335,9 @@ async function loadIntoCell(i: number, si: number) {
       await ensureStack(i).setStack(imageIds);
       void refreshMeta(i);
     } else {
-      // No images — an encapsulated-PDF report or other non-image series.
-      // Render the first PDF the source exposes (if any); else the cell is empty.
-      await maybeShowPdf(i, s, token);
+      // No images — a report series (encapsulated PDF or Structured Report) or
+      // other non-image series. Render the first report the source exposes.
+      await maybeShowReport(i, s, token);
     }
   } finally {
     clearTimeout(watchdog);
@@ -339,17 +345,34 @@ async function loadIntoCell(i: number, si: number) {
   }
 }
 
-// Render the active series' first encapsulated PDF, if the source supports it.
-// listPdfs is populated by the getImageIds() call that just ran for this series.
-async function maybeShowPdf(i: number, s: SeriesSummary, token: number) {
+// Render the active series' first report document (PDF or SR), if the source
+// supports it. The report list is populated by the getImageIds() call that just
+// ran for this series. (Multiple reports / mixed image+report series — render-all
+// — is a later enhancement; this shows the first.)
+async function maybeShowReport(i: number, s: SeriesSummary, token: number) {
   const src = props.source;
-  if (!src.capabilities.encapsulatedPdf || !src.listPdfs || !src.getPdfObjectUrl) return;
-  const pdfs = src.listPdfs(s);
-  if (!pdfs.length) return;
+  // Prefer the generalized report surface; fall back to the legacy PDF-only one.
+  const reports =
+    src.listReports?.(s) ??
+    (src.listPdfs?.(s) ?? []).map((p) => ({
+      sopUid: p.sopUid,
+      kind: "pdf" as const,
+      bulkDataUri: p.bulkDataUri,
+    }));
+  const report = reports[0];
+  if (!report) return;
   try {
-    const url = await src.getPdfObjectUrl(s, pdfs[0]);
-    if (token === tokens[i]) pdfUrl[i] = url;
-    else URL.revokeObjectURL(url); // a newer load won — drop this one
+    if (report.kind === "pdf" && src.getPdfObjectUrl) {
+      const url = await src.getPdfObjectUrl(s, {
+        sopUid: report.sopUid,
+        bulkDataUri: report.bulkDataUri ?? null,
+      });
+      if (token === tokens[i]) pdfUrl[i] = url;
+      else URL.revokeObjectURL(url); // a newer load won — drop this one
+    } else if (report.kind === "sr" && src.getStructuredReport) {
+      const tree = await src.getStructuredReport(s, report);
+      if (token === tokens[i]) srTree[i] = tree;
+    }
   } catch {
     /* leave the cell empty on failure */
   }
@@ -360,6 +383,7 @@ function clearPdf(i: number) {
     URL.revokeObjectURL(pdfUrl[i]!);
     pdfUrl[i] = null;
   }
+  srTree[i] = null;
 }
 
 const selectSeries = (si: number) => loadIntoCell(activeCell.value, si);
@@ -596,8 +620,9 @@ onUnmounted(() => {
 }
 
 /* Non-blocking warm-up bar: floats over the top of the stage (absolute) so it
-   never pushes the viewport down when it shows/hides. Transparent gradient
-   backdrop keeps the label legible over dark pixels without occluding them. */
+   never pushes the viewport down when it shows/hides. A thin progress line hugs
+   the very top; the label rides in a centered frosted chip below it, clear of the
+   corner metadata overlay so it never occludes the patient/study info. */
 .toploader {
   position: absolute;
   top: 0;
@@ -605,7 +630,6 @@ onUnmounted(() => {
   right: 0;
   z-index: 6;
   pointer-events: none;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
 }
 .toploader__track {
   height: 3px;
@@ -618,14 +642,24 @@ onUnmounted(() => {
   transition: width 0.2s ease;
 }
 .toploader__meta {
+  width: fit-content;
+  max-width: min(82%, 460px);
+  margin: 10px auto 0;
   display: flex;
   align-items: baseline;
   gap: 4px 10px;
-  padding: 5px 14px 8px;
+  padding: 6px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  /* Frosted backdrop: blurs whatever is behind so the chip reads as one seamless
+     element instead of text floating over pixels. */
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
   font-family: var(--font);
   font-size: 12px;
   line-height: 1.3;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
 }
 .toploader__label {
   flex: none;
@@ -802,6 +836,8 @@ onUnmounted(() => {
   }
   .toploader__meta {
     flex-wrap: wrap;
+    max-width: 92%;
+    margin-top: 8px;
     padding: 5px 12px;
     gap: 2px 8px;
     font-size: 11px;

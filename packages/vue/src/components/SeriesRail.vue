@@ -11,7 +11,7 @@
       <span class="rail__num">{{ i + 1 }}</span>
       <span class="rail__body">
         <span class="rail__name">{{ s.seriesDescription || s.modality || t("series") }}</span>
-        <span class="rail__meta">{{ s.modality }} · {{ s.numberOfFrames ?? 0 }} img</span>
+        <span class="rail__meta">{{ meta(s) }}</span>
       </span>
     </button>
   </div>
@@ -21,8 +21,19 @@ import type { SeriesSummary } from "@orbidicom/core";
 import { t } from "../i18n";
 defineProps<{ series: SeriesSummary[]; active: number }>();
 defineEmits<{ select: [number] }>();
-const label = (s: SeriesSummary, i: number) =>
-  `${i + 1}. ${s.seriesDescription || s.modality || t("series")} (${s.modality} · ${s.numberOfFrames ?? 0} img)`;
+// The image count is only meaningful for image series. Report/document series
+// (e.g. an encapsulated PDF, modality DOC, 0 frames) show just the modality —
+// "DOC · 0 img" reads like an error, so the count is dropped when there are none.
+const meta = (s: SeriesSummary) => {
+  const mod = s.modality ?? "";
+  const n = s.numberOfFrames ?? 0;
+  if (n <= 0) return mod;
+  return mod ? `${mod} · ${n} img` : `${n} img`;
+};
+const label = (s: SeriesSummary, i: number) => {
+  const m = meta(s);
+  return `${i + 1}. ${s.seriesDescription || s.modality || t("series")}${m ? ` (${m})` : ""}`;
+};
 </script>
 <style scoped>
 .rail {

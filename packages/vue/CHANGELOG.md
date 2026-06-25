@@ -1,5 +1,24 @@
 # @orbidicom/vue
 
+## 0.3.0
+
+### Minor Changes
+
+- Render DICOM Structured Reports (SR). SR series are no longer filtered out — they're
+  parsed into a normalized `SrTree` and shown as a readable, indented document. The
+  `DataSource` interface gains a generalized report surface (`listReports`,
+  `getStructuredReport`, `ReportInstance`, `capabilities.reports`) alongside the
+  existing PDF hooks; `DicomWebDataSource` parses the SR Content Sequence already inline
+  in WADO-RS metadata (no extra fetch). The new `SrView` renders the tree with escaped
+  interpolation (no `v-html`), themed from CSS tokens, with SR error/placeholder i18n in
+  all four locales. Core text value types (CONTAINER/TEXT/NUM/CODE/DATE/TIME/PNAME/UIDREF)
+  render fully; spatial/image/waveform types show a labeled placeholder for now.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @orbidicom/core@0.3.0
+
 ## 0.2.1
 
 ### Patch Changes

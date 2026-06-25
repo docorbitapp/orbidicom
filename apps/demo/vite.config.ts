@@ -2,7 +2,22 @@ import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    {
+      // Inject the runtime-config <script> at build/serve time rather than hard-
+      // coding it in index.html. config.js is a classic, runtime-GENERATED global
+      // (the CLI/container rewrites it per deploy), so it must NOT be bundled.
+      // Injecting via the hook keeps the relative "./config.js" path (sub-path
+      // deploys) while avoiding Vite's "can't be bundled without type=module"
+      // warning. Classic script → runs before the deferred app module regardless
+      // of position; body-prepend keeps it ahead of the bundle entry.
+      name: "orbidicom-runtime-config",
+      transformIndexHtml() {
+        return [{ tag: "script", attrs: { src: "./config.js" }, injectTo: "body-prepend" }];
+      },
+    },
+  ],
   base: "./",
   // @orbidicom/vue is shipped as source in the monorepo; let the vue plugin compile it.
   // Only @cornerstonejs/dicom-image-loader (WASM + web workers) breaks esbuild's dep

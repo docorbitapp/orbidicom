@@ -3,7 +3,8 @@
   "changelog": ["@changesets/changelog-github", { "repo": "docorbitapp/orbidicom" }],
   "commit": false,
   "access": "public",
+  "fixed": [["@orbidicom/core", "@orbidicom/vue", "orbidicom"]],
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["@orbidicom/demo", "orbidicom", "create-orbidicom"]
+  "ignore": ["@orbidicom/demo", "create-orbidicom"]
 }

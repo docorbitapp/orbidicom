@@ -1,4 +1,20 @@
-import type { DataSource, SeriesSummary, DataSourceCapabilities } from "../datasource";
+import type {
+  DataSource,
+  SeriesSummary,
+  DataSourceCapabilities,
+  PdfInstance,
+  ReportInstance,
+  SrTree,
+} from "../datasource";
+import { srTreeFromParser, type ParserDataSet } from "../sr/from-parser";
+
+// Encapsulated PDF Storage SOP Class UID (mirrors DicomWebDataSource).
+const ENCAPSULATED_PDF_SOP = "1.2.840.10008.5.1.4.1.1.104.1";
+
+/** A non-image report document carried by an instance (rendered, not stacked).
+ *  A PDF carries its decoded bytes; an SR carries its parsed tree (parsed at
+ *  ingestion, since the dicom-parser DataSet isn't retained afterwards). */
+export type LocalReportPayload = { kind: "pdf"; bytes: Uint8Array } | { kind: "sr"; tree: SrTree };
 
 export interface LocalTags {
   seriesInstanceUID: string;
@@ -13,11 +29,21 @@ export interface LocalTags {
    *  Optional: when omitted (e.g. an injected parseFile in tests) the instance is
    *  treated as renderable; only an explicit `false` skips it. */
   hasPixelData?: boolean;
+  /** Present when the instance is a report document (e.g. an encapsulated PDF).
+   *  Such instances carry no PixelData but are still rendered, so they bypass the
+   *  hasPixelData / non-renderable-modality skips in {@link LocalDataSource.addFiles}. */
+  report?: LocalReportPayload;
 }
 
 interface LocalInstance {
   imageId: string;
   instanceNumber: number;
+}
+
+interface LocalReport {
+  sopUid: string;
+  instanceNumber: number;
+  payload: LocalReportPayload;
 }
 
 // Modalities that carry no displayable pixel data (they reference other series):
@@ -42,12 +68,18 @@ export interface LocalOptions {
 export class LocalDataSource implements DataSource {
   readonly capabilities: DataSourceCapabilities = {
     downloadArchive: false,
-    encapsulatedPdf: false,
+    encapsulatedPdf: true,
+    reports: { pdf: true, sr: true },
     multiStudy: false,
   };
   private series = new Map<
     string,
-    { summary: SeriesSummary; seriesNumber: number; instances: LocalInstance[] }
+    {
+      summary: SeriesSummary;
+      seriesNumber: number;
+      instances: LocalInstance[];
+      reports: LocalReport[];
+    }
   >();
   private addFile: (file: File) => string | Promise<string>;
   private parseFile: (file: File) => Promise<LocalTags>;
@@ -74,6 +106,20 @@ export class LocalDataSource implements DataSource {
       } catch {
         continue; // not a DICOM file — skip it
       }
+      // Report documents (encapsulated PDFs, …) carry no PixelData but are still
+      // rendered as their own series, so they bypass the skips below. Deduped by
+      // SOP UID like image instances.
+      if (t.report) {
+        if (t.sopInstanceUID && this.seenSops.has(t.sopInstanceUID)) continue;
+        if (t.sopInstanceUID) this.seenSops.add(t.sopInstanceUID);
+        this.entryFor(t).reports.push({
+          sopUid: t.sopInstanceUID,
+          instanceNumber: t.instanceNumber,
+          payload: t.report,
+        });
+        added++;
+        continue;
+      }
       // Skip non-renderable modalities (SR/PR/KO/PLAN) and any instance without
       // PixelData (DICOMDIR / presentation states / reports — often blank
       // modality). Either would hang the viewer on a series with nothing to decode.
@@ -84,24 +130,30 @@ export class LocalDataSource implements DataSource {
       if (t.sopInstanceUID && this.seenSops.has(t.sopInstanceUID)) continue;
       const imageId = await this.addFile(file);
       if (t.sopInstanceUID) this.seenSops.add(t.sopInstanceUID);
-      let entry = this.series.get(t.seriesInstanceUID);
-      if (!entry) {
-        entry = {
-          summary: {
-            seriesInstanceUID: t.seriesInstanceUID,
-            studyInstanceUID: "local",
-            modality: t.modality,
-            seriesDescription: t.seriesDescription,
-          },
-          seriesNumber: t.seriesNumber,
-          instances: [],
-        };
-        this.series.set(t.seriesInstanceUID, entry);
-      }
-      entry.instances.push({ imageId, instanceNumber: t.instanceNumber });
+      this.entryFor(t).instances.push({ imageId, instanceNumber: t.instanceNumber });
       added++;
     }
     return added;
+  }
+
+  /** Get or create the series entry for a parsed instance's tags. */
+  private entryFor(t: LocalTags) {
+    let entry = this.series.get(t.seriesInstanceUID);
+    if (!entry) {
+      entry = {
+        summary: {
+          seriesInstanceUID: t.seriesInstanceUID,
+          studyInstanceUID: "local",
+          modality: t.modality,
+          seriesDescription: t.seriesDescription,
+        },
+        seriesNumber: t.seriesNumber,
+        instances: [],
+        reports: [],
+      };
+      this.series.set(t.seriesInstanceUID, entry);
+    }
+    return entry;
   }
 
   async getSeries(_studyUids: string[]): Promise<SeriesSummary[]> {
@@ -117,6 +169,57 @@ export class LocalDataSource implements DataSource {
       .slice()
       .sort((a, b) => a.instanceNumber - b.instanceNumber)
       .map((i) => i.imageId);
+  }
+
+  /** @deprecated use {@link listReports}. Encapsulated PDFs ingested for this series. */
+  listPdfs(series: SeriesSummary): PdfInstance[] {
+    const entry = this.series.get(series.seriesInstanceUID);
+    if (!entry) return [];
+    return entry.reports
+      .filter((r) => r.payload.kind === "pdf")
+      .slice()
+      .sort((a, b) => a.instanceNumber - b.instanceNumber)
+      .map((r) => ({ sopUid: r.sopUid, bulkDataUri: null }));
+  }
+
+  /** Report documents (PDF + SR) ingested for this series. */
+  listReports(series: SeriesSummary): ReportInstance[] {
+    const entry = this.series.get(series.seriesInstanceUID);
+    if (!entry) return [];
+    return entry.reports
+      .slice()
+      .sort((a, b) => a.instanceNumber - b.instanceNumber)
+      .map((r) => ({
+        sopUid: r.sopUid,
+        kind: r.payload.kind,
+        instanceNumber: r.instanceNumber,
+        ...(r.payload.kind === "pdf" ? { bulkDataUri: null } : {}),
+      }));
+  }
+
+  /** Wrap a retained encapsulated-PDF's bytes in an application/pdf object URL.
+   *  The caller renders it (e.g. via pdf.js) and must revoke the URL when done. */
+  async getPdfObjectUrl(series: SeriesSummary, pdf: PdfInstance): Promise<string> {
+    const entry = this.series.get(series.seriesInstanceUID);
+    const report = entry?.reports.find((r) => r.sopUid === pdf.sopUid && r.payload.kind === "pdf");
+    if (!report || report.payload.kind !== "pdf")
+      throw new Error(`LocalDataSource: no PDF for SOP ${pdf.sopUid}`);
+    // Copy into a fresh ArrayBuffer so the Blob part is unambiguously an
+    // ArrayBuffer (mirrors DicomWebDataSource; sidesteps the Uint8Array/Blob
+    // SharedArrayBuffer variance in the DOM lib types).
+    const bytes = report.payload.bytes;
+    const ab = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(ab).set(bytes);
+    return URL.createObjectURL(new Blob([ab], { type: "application/pdf" }));
+  }
+
+  /** Return a Structured Report's tree (parsed at ingestion). */
+  async getStructuredReport(series: SeriesSummary, report: ReportInstance): Promise<SrTree> {
+    const entry = this.series.get(series.seriesInstanceUID);
+    const found = entry?.reports.find((r) => r.sopUid === report.sopUid && r.payload.kind === "sr");
+    if (!found || found.payload.kind !== "sr")
+      throw new Error(`LocalDataSource: no SR for SOP ${report.sopUid}`);
+    return found.payload.tree;
   }
 }
 
@@ -137,9 +240,11 @@ const DICM_MAGIC = [0x44, 0x49, 0x43, 0x4d]; // "DICM" at byte offset 128
 // study folder can't OOM the tab during the magic-byte sniff.
 const NO_PREAMBLE_MAX_BYTES = 80 * 1024 * 1024;
 
+type DicomElement = { dataOffset: number; length: number };
 type ParsedDataSet = {
   string: (tag: string) => string | undefined;
-  elements?: Record<string, unknown>;
+  elements?: Record<string, DicomElement | undefined>;
+  byteArray?: Uint8Array;
 };
 let parserP:
   | Promise<{
@@ -165,6 +270,23 @@ async function defaultParseFile(file: File): Promise<LocalTags> {
     // Headerless / no-preamble datasets — retry as Implicit VR Little Endian.
     ds = dicomParser.parseDicom(bytes, { TransferSyntaxUID: "1.2.840.10008.1.2" });
   }
+  // Encapsulated PDF (Encapsulated PDF Storage SOP class, or any instance carrying
+  // an EncapsulatedDocument 0042,0011): slice its bytes out so getPdfObjectUrl can
+  // wrap them in a Blob. These have no PixelData but are rendered, not skipped.
+  const encEl = ds.elements?.["x00420011"];
+  const isPdf = ds.string("x00080016") === ENCAPSULATED_PDF_SOP || encEl !== undefined;
+  let report: LocalReportPayload | undefined;
+  if (isPdf && encEl && ds.byteArray) {
+    report = {
+      kind: "pdf",
+      bytes: ds.byteArray.slice(encEl.dataOffset, encEl.dataOffset + encEl.length),
+    };
+  } else if (ds.elements?.["x0040a730"] !== undefined) {
+    // Structured Report: an SR Content Sequence (0040,A730) is present. Parse it
+    // now — the dicom-parser DataSet isn't retained past this function.
+    report = { kind: "sr", tree: srTreeFromParser(ds as unknown as ParserDataSet) };
+  }
+
   return {
     seriesInstanceUID: ds.string("x0020000e") || "local-series",
     seriesNumber: Number(ds.string("x00200011")) || 0,
@@ -175,5 +297,6 @@ async function defaultParseFile(file: File): Promise<LocalTags> {
     // PixelData (7FE0,0010) present → a renderable image. Absent → DICOMDIR,
     // presentation state, structured report, etc. — skipped by addFiles.
     hasPixelData: ds.elements?.["x7fe00010"] !== undefined,
+    report,
   };
 }

@@ -4,6 +4,8 @@
 // be pointed at any PACS without a rebuild. In dev a default empty config ships
 // in public/config.js.
 
+import type { AuthStrategy } from "@orbidicom/core";
+
 export interface RuntimeConfig {
   /**
    * DICOMweb (WADO-RS / QIDO-RS) base URL the browser calls. Empty string means
@@ -13,6 +15,13 @@ export interface RuntimeConfig {
   pacsUrl?: string;
   /** Optional Study Instance UID to auto-open on load. */
   studyUid?: string;
+  /**
+   * PACS auth strategy. Omitted → same-origin (no Authorization header; the
+   * browser still sends same-origin cookies). Use "cookie" for cross-origin
+   * session cookies. SECURITY: "basic"/"bearer" embed the credential in this
+   * client-readable config — only for trusted/internal deployments.
+   */
+  auth?: AuthStrategy;
 }
 
 declare global {
@@ -33,7 +42,13 @@ export function mergeConfig(base: RuntimeConfig, search: string): RuntimeConfig 
     const v = params.get(key);
     return v != null && v.trim() !== "" ? v.trim() : (fallback ?? "").trim();
   };
-  return { pacsUrl: pick("pacs", base.pacsUrl), studyUid: pick("study", base.studyUid) };
+  // Auth comes from the base config ONLY — never a query param — so a crafted
+  // link can't inject or downgrade credentials.
+  return {
+    pacsUrl: pick("pacs", base.pacsUrl),
+    studyUid: pick("study", base.studyUid),
+    auth: base.auth,
+  };
 }
 
 export function runtimeConfig(): RuntimeConfig {

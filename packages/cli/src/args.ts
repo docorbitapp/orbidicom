@@ -4,7 +4,12 @@ export interface CliOptions {
   command: Command;
   pacs?: string;
   study?: string;
-  auth?: "none" | "basic" | "bearer";
+  auth?: "none" | "basic" | "bearer" | "cookie";
+  /** Bearer token (with --auth bearer). */
+  token?: string;
+  /** Basic-auth credentials (with --auth basic). */
+  username?: string;
+  password?: string;
   port: number;
   open: boolean;
   rest: string[];
@@ -33,6 +38,15 @@ export function parseArgs(argv: string[]): CliOptions {
         break;
       case "--auth":
         opts.auth = argv[++i] as CliOptions["auth"];
+        break;
+      case "--token":
+        opts.token = argv[++i];
+        break;
+      case "--username":
+        opts.username = argv[++i];
+        break;
+      case "--password":
+        opts.password = argv[++i];
         break;
       case "--port":
         opts.port = Number(argv[++i]);

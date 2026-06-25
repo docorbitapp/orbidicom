@@ -352,7 +352,9 @@ function onPreset(name: string) {
 }
 .toolbar__title {
   flex: none;
-  font-weight: 600;
+  /* Brand wordmark font; falls back to the theme font if Oxygen isn't loaded. */
+  font-family: "Oxygen", var(--font);
+  font-weight: 700;
   font-size: 13px;
   color: var(--text);
 }

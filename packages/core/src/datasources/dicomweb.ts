@@ -1,9 +1,17 @@
 import { api } from "dicomweb-client";
 import { wadors } from "@cornerstonejs/dicom-image-loader";
-import type { DataSource, SeriesSummary, DataSourceCapabilities, PdfInstance } from "../datasource";
+import type {
+  DataSource,
+  SeriesSummary,
+  DataSourceCapabilities,
+  PdfInstance,
+  ReportInstance,
+  SrTree,
+} from "../datasource";
 import type { AuthStrategy } from "../auth";
 import { authHeaders } from "../auth";
 import { buildWadoRsImageId } from "../imageIds";
+import { srTreeFromJson } from "../sr/from-json";
 
 const TAG = {
   SERIES_UID: "0020000E",
@@ -17,16 +25,17 @@ const TAG = {
   INSTANCE_NUMBER: "00200013",
   ROWS: "00280010",
   ENCAPSULATED_DOCUMENT: "00420011",
+  CONTENT_SEQUENCE: "0040A730", // SR document root content
 } as const;
 
 // Encapsulated PDF Storage SOP Class UID.
 const ENCAPSULATED_PDF_SOP = "1.2.840.10008.5.1.4.1.1.104.1";
 
-// Modalities the viewer cannot display: they carry no pixel data and are not
-// encapsulated documents (PR/SR/KO reference other series; PLAN is RT). Keeping
-// them out of the rail avoids a silent black cell. PDF reports (DOC/OT) are NOT
-// listed — the encapsulated-PDF path handles them.
-const NON_RENDERABLE_MODALITIES = new Set(["PR", "SR", "KO", "PLAN"]);
+// Modalities the viewer cannot display: presentation states, key objects and RT
+// plans reference other series with nothing to render on their own. SR is NOT
+// listed here — Structured Reports are rendered (see getStructuredReport); PDF
+// reports (DOC/OT) are likewise kept and handled by the encapsulated-PDF path.
+const NON_RENDERABLE_MODALITIES = new Set(["PR", "KO", "PLAN"]);
 
 /** The subset of dicomweb-client we use — lets tests inject a fake. */
 export interface DICOMwebClientLike {
@@ -62,11 +71,18 @@ export class DicomWebDataSource implements DataSource {
   readonly capabilities: DataSourceCapabilities = {
     downloadArchive: false,
     encapsulatedPdf: true,
+    reports: { pdf: true, sr: true },
     multiStudy: true,
   };
   private root: string;
   private client: DICOMwebClientLike;
   private pdfsBySeries = new Map<string, PdfInstance[]>();
+  // Structured Reports found per series during getImageIds, with their (already
+  // fetched) DICOM-JSON metadata cached so getStructuredReport needs no extra call.
+  private srBySeries = new Map<
+    string,
+    { sopUid: string; instanceNumber: number; modality: string; meta: Record<string, unknown> }[]
+  >();
   private fetchFn: typeof fetch;
   private headers: Record<string, string>;
   // Cookie auth rides on credentials; otherwise stay same-origin.
@@ -127,6 +143,12 @@ export class DicomWebDataSource implements DataSource {
 
     const imageIds: string[] = [];
     const pdfs: PdfInstance[] = [];
+    const srs: {
+      sopUid: string;
+      instanceNumber: number;
+      modality: string;
+      meta: Record<string, unknown>;
+    }[] = [];
     for (const meta of ordered) {
       const sopUid = first(meta, TAG.SOP_UID);
       if (!sopUid) continue;
@@ -135,7 +157,18 @@ export class DicomWebDataSource implements DataSource {
         pdfs.push({ sopUid, bulkDataUri: enc?.BulkDataURI ?? null });
         continue;
       }
-      if (meta[TAG.ROWS] === undefined) continue; // non-image (SR etc.) — not renderable
+      // A Structured Report: its Content Sequence is already inline in this
+      // metadata, so cache it for getStructuredReport (no extra fetch).
+      if (meta[TAG.CONTENT_SEQUENCE] !== undefined) {
+        srs.push({
+          sopUid,
+          instanceNumber: num(meta, TAG.INSTANCE_NUMBER),
+          modality: first(meta, TAG.MODALITY),
+          meta,
+        });
+        continue;
+      }
+      if (meta[TAG.ROWS] === undefined) continue; // non-image, non-report — not renderable
       const frames = num(meta, TAG.NUMBER_OF_FRAMES) || 1;
       // Register once under frame 1; multiframe lookups fall back to this entry.
       wadors.metaDataManager.add(
@@ -149,12 +182,39 @@ export class DicomWebDataSource implements DataSource {
       }
     }
     this.pdfsBySeries.set(seriesUid, pdfs);
+    this.srBySeries.set(seriesUid, srs);
     return imageIds;
   }
 
   /** Encapsulated PDFs found during the last {@link getImageIds} for this series. */
   listPdfs(series: SeriesSummary): PdfInstance[] {
     return this.pdfsBySeries.get(series.seriesInstanceUID) ?? [];
+  }
+
+  /** All report documents (PDF + SR) found during the last {@link getImageIds}. */
+  listReports(series: SeriesSummary): ReportInstance[] {
+    const sid = series.seriesInstanceUID;
+    const pdfs: ReportInstance[] = (this.pdfsBySeries.get(sid) ?? []).map((p) => ({
+      sopUid: p.sopUid,
+      kind: "pdf",
+      bulkDataUri: p.bulkDataUri,
+    }));
+    const srs: ReportInstance[] = (this.srBySeries.get(sid) ?? []).map((s) => ({
+      sopUid: s.sopUid,
+      kind: "sr",
+      instanceNumber: s.instanceNumber,
+      modality: s.modality,
+    }));
+    return [...pdfs, ...srs];
+  }
+
+  /** Parse a cached SR instance's metadata into a normalized {@link SrTree}. */
+  async getStructuredReport(series: SeriesSummary, report: ReportInstance): Promise<SrTree> {
+    const entry = this.srBySeries
+      .get(series.seriesInstanceUID)
+      ?.find((s) => s.sopUid === report.sopUid);
+    if (!entry) throw new Error(`DicomWebDataSource: no SR for SOP ${report.sopUid}`);
+    return srTreeFromJson(entry.meta);
   }
 
   /**

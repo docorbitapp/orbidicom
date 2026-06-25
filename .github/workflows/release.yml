@@ -1,10 +1,15 @@
 name: Publish to npm
 
-# Publishes @orbidicom/core + @orbidicom/vue on a version tag (v*) or manual run.
+# Publishes @orbidicom/core, @orbidicom/vue, and the orbidicom CLI on a version tag
+# (v*) or manual run. The three version in lockstep (changesets `fixed` group), so
+# `npx orbidicom` never lags the library it bundles. `pnpm build` rebuilds the demo
+# into the CLI's public/ before packing, so the CLI ships the just-built viewer.
 #
 # Auth: npm OIDC "trusted publishing" — no token. npm trusts this workflow via the
 # trusted publisher configured on each package (GitHub Actions · docorbitapp/orbidicom
-# · release.yml). Two requirements the obvious `pnpm -r publish` doesn't meet:
+# · release.yml). NOTE: the `orbidicom` package needs its OWN trusted-publisher entry
+# configured on npm (same as core/vue) or its publish step fails ENEEDAUTH.
+# Two requirements the obvious `pnpm -r publish` doesn't meet:
 #   1. OIDC publishing needs the npm CLI >= 11.5.1 (Node 20 ships npm 10; pnpm's
 #      publish delegates to that npm and fails ENEEDAUTH) — so we upgrade npm and
 #      publish with it directly.
@@ -46,6 +51,7 @@ jobs:
           mkdir -p "$dest"
           pnpm --filter "@orbidicom/core" pack --pack-destination "$dest"
           pnpm --filter "@orbidicom/vue" pack --pack-destination "$dest"
+          pnpm --filter "orbidicom" pack --pack-destination "$dest"
           for tgz in "$dest"/*.tgz; do
             echo "::group::npm publish $(basename "$tgz")"
             npm publish "$tgz" --access public

@@ -31,7 +31,9 @@ function openPacs() {
   }
   message.value = "";
   studyUids.value = [uid];
-  source.value = new DicomWebDataSource({ root: pacsUrl });
+  // cfg.auth is undefined unless a deployer configured one → source defaults to
+  // same-origin (no header, cookies still sent same-origin).
+  source.value = new DicomWebDataSource({ root: pacsUrl, auth: cfg.auth });
 }
 
 // Auto-open a preconfigured study (ORBIDICOM_STUDY_UID) on load.

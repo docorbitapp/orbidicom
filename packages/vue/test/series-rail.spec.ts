@@ -23,4 +23,19 @@ describe("SeriesRail", () => {
     const w = mount(SeriesRail, { props: { series, active: 0 } });
     expect(w.findAll(".rail__item")[1].text()).toContain("MR");
   });
+
+  it("omits the image count for a no-image report series (e.g. DOC)", () => {
+    const reports = [
+      {
+        seriesInstanceUID: "DOC1",
+        modality: "DOC",
+        seriesDescription: "REPORT PDF",
+        numberOfFrames: 0,
+      },
+    ];
+    const w = mount(SeriesRail, { props: { series: reports, active: 0 } });
+    const item = w.findAll(".rail__item")[0];
+    expect(item.text()).toContain("DOC");
+    expect(item.text()).not.toContain("img"); // no "· 0 img" for report series
+  });
 });
