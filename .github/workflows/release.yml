@@ -1,14 +1,16 @@
 name: Publish to npm
 
-# Publishes the public packages (@orbidicom/core, @orbidicom/vue, orbidicom) to
-# the npm registry on a version tag (e.g. v0.2.1) or a manual run. Private
-# packages (@orbidicom/demo, create-orbidicom) are skipped, and already-published
-# versions (e.g. the unchanged CLI) are skipped automatically by `pnpm -r publish`.
+# Publishes @orbidicom/core + @orbidicom/vue on a version tag (v*) or manual run.
 #
 # Auth: npm OIDC "trusted publishing" — no token. npm trusts this workflow via the
 # trusted publisher configured on each package (GitHub Actions · docorbitapp/orbidicom
-# · release.yml). Needs pnpm >= 10.12 (does the OIDC token exchange) and id-token: write.
-# Provenance is intentionally NOT enabled — it requires a public repo.
+# · release.yml). Two requirements the obvious `pnpm -r publish` doesn't meet:
+#   1. OIDC publishing needs the npm CLI >= 11.5.1 (Node 20 ships npm 10; pnpm's
+#      publish delegates to that npm and fails ENEEDAUTH) — so we upgrade npm and
+#      publish with it directly.
+#   2. npm can't read pnpm's `workspace:*` deps — so we `pnpm pack` first, which
+#      rewrites them to real versions in the tarball, then `npm publish` the tarball.
+# Provenance is intentionally off — it requires a public repo.
 on:
   push:
     tags:
@@ -34,4 +36,18 @@ jobs:
       - run: pnpm build
       - run: pnpm test
 
-      - run: pnpm -r publish --access public --no-git-checks
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Pack (pnpm, rewrites workspace deps) + publish (npm, OIDC)
+        run: |
+          set -euo pipefail
+          dest="$RUNNER_TEMP/tgz"
+          mkdir -p "$dest"
+          pnpm --filter "@orbidicom/core" pack --pack-destination "$dest"
+          pnpm --filter "@orbidicom/vue" pack --pack-destination "$dest"
+          for tgz in "$dest"/*.tgz; do
+            echo "::group::npm publish $(basename "$tgz")"
+            npm publish "$tgz" --access public
+            echo "::endgroup::"
+          done
