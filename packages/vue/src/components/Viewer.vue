@@ -62,6 +62,9 @@
           >
             <div :ref="(el) => setEl(i - 1, el)" class="cs-viewport" />
 
+            <!-- Encapsulated-PDF report series render here instead of an image stack. -->
+            <PdfView v-if="pdfUrl[i - 1]" :src="pdfUrl[i - 1]!" />
+
             <Overlay
               v-if="overlayOn && sliceCount[i - 1]"
               :meta="meta[i - 1]"
@@ -147,6 +150,7 @@ import SeriesRail from "./SeriesRail.vue";
 import Controls from "./Controls.vue";
 import Overlay from "./Overlay.vue";
 import MetaPanel from "./MetaPanel.vue";
+import PdfView from "./PdfView.vue";
 import {
   initCornerstone,
   setPrimaryTool,
@@ -211,6 +215,8 @@ const wl = reactive<(WindowLevel | null)[]>(fill<WindowLevel | null>(null));
 const meta = reactive<(ImageMetadata | null)[]>(fill<ImageMetadata | null>(null));
 const cellLoading = reactive<boolean[]>(fill(false));
 const cinePlaying = reactive<boolean[]>(fill(false));
+// Object URL of the encapsulated PDF shown in a cell (null = image/empty cell).
+const pdfUrl = reactive<(string | null)[]>(fill<string | null>(null));
 // Background warm-up (stackPrefetch) progress per cell, driving the top loader bar.
 const prefetchLoaded = reactive<number[]>(fill(0));
 const prefetchTotal = reactive<number[]>(fill(0));
@@ -313,20 +319,46 @@ async function loadIntoCell(i: number, si: number) {
     clearTimeout(watchdog);
     return;
   }
+  clearPdf(i);
   cellImageIds[i] = imageIds;
   sliceCount[i] = imageIds.length;
   sliceIndex[i] = 0;
 
   try {
-    // A non-image series (e.g. encapsulated PDF / structured report) returns no
-    // imageIds; the cell simply stays empty. PDF rendering is a later plan.
     if (imageIds.length) {
       await ensureStack(i).setStack(imageIds);
       void refreshMeta(i);
+    } else {
+      // No images — an encapsulated-PDF report or other non-image series.
+      // Render the first PDF the source exposes (if any); else the cell is empty.
+      await maybeShowPdf(i, s, token);
     }
   } finally {
     clearTimeout(watchdog);
     if (token === tokens[i]) cellLoading[i] = false;
+  }
+}
+
+// Render the active series' first encapsulated PDF, if the source supports it.
+// listPdfs is populated by the getImageIds() call that just ran for this series.
+async function maybeShowPdf(i: number, s: SeriesSummary, token: number) {
+  const src = props.source;
+  if (!src.capabilities.encapsulatedPdf || !src.listPdfs || !src.getPdfObjectUrl) return;
+  const pdfs = src.listPdfs(s);
+  if (!pdfs.length) return;
+  try {
+    const url = await src.getPdfObjectUrl(s, pdfs[0]);
+    if (token === tokens[i]) pdfUrl[i] = url;
+    else URL.revokeObjectURL(url); // a newer load won — drop this one
+  } catch {
+    /* leave the cell empty on failure */
+  }
+}
+
+function clearPdf(i: number) {
+  if (pdfUrl[i]) {
+    URL.revokeObjectURL(pdfUrl[i]!);
+    pdfUrl[i] = null;
   }
 }
 
@@ -419,6 +451,7 @@ onUnmounted(() => {
   for (let i = 0; i < MAX_CELLS; i++) {
     tokens[i]++;
     stopCine(i);
+    clearPdf(i);
     stacks[i]?.destroy();
     stacks[i] = null;
   }

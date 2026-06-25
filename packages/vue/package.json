@@ -1,6 +1,6 @@
 {
   "name": "@orbidicom/vue",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Modern, mobile-responsive, multilingual Vue 3 UI for the OrbiDICOM viewer: toolbar, series rail, selectable grids, on-image metadata overlay, metadata reader, theming and live i18n (EN/TR/DE/ES).",
   "license": "MIT",
   "homepage": "https://github.com/docorbitapp/orbidicom#readme",
@@ -40,7 +40,8 @@
     "vue": "^3.5.0"
   },
   "dependencies": {
-    "@orbidicom/core": "workspace:*"
+    "@orbidicom/core": "workspace:*",
+    "pdfjs-dist": "^6.0.227"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.1.0",

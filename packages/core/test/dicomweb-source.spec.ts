@@ -83,3 +83,86 @@ describe("DicomWebDataSource", () => {
     );
   });
 });
+
+describe("DicomWebDataSource encapsulated PDFs", () => {
+  const pdfClient = {
+    searchForSeries: vi.fn(async () => [
+      { "0020000E": V("DOC1"), "00080060": V("DOC"), "00200011": V("1"), "0008103E": V("Report") },
+    ]),
+    retrieveSeriesMetadata: vi.fn(async () => [
+      // Encapsulated PDF: PDF SOP class + a BulkDataURI, no Rows → not an image.
+      {
+        "00080018": V("pdf-sop"),
+        "00080016": V("1.2.840.10008.5.1.4.1.1.104.1"),
+        "00200013": V("1"),
+        "00420011": {
+          BulkDataURI:
+            "http://orthanc/internal/studies/study-1/series/DOC1/instances/pdf-sop/bulk/00420011",
+        },
+      },
+    ]),
+  };
+
+  /** Build a WADO-RS-style multipart/related body wrapping `payload`. */
+  function multipart(payload: string): ArrayBuffer {
+    const enc = new TextEncoder();
+    const head = enc.encode("--b\r\nContent-Type: application/octet-stream\r\n\r\n");
+    const body = enc.encode(payload);
+    const tail = enc.encode("\r\n--b--\r\n");
+    const out = new Uint8Array(head.length + body.length + tail.length);
+    out.set(head, 0);
+    out.set(body, head.length);
+    out.set(tail, head.length + body.length);
+    return out.buffer;
+  }
+
+  it("excludes PDFs from imageIds and exposes them via listPdfs", async () => {
+    const ds = new DicomWebDataSource({ root: "/pacs/dicom-web", client: pdfClient as never });
+    const series = { seriesInstanceUID: "DOC1", studyInstanceUID: "study-1" };
+    const ids = await ds.getImageIds(series);
+    expect(ids).toEqual([]);
+    expect(ds.listPdfs(series)).toEqual([
+      {
+        sopUid: "pdf-sop",
+        bulkDataUri: expect.stringContaining(
+          "/studies/study-1/series/DOC1/instances/pdf-sop/bulk/00420011",
+        ),
+      },
+    ]);
+  });
+
+  it("getPdfObjectUrl fetches the bulk payload (rebased onto root), strips the multipart envelope, returns a pdf object URL", async () => {
+    const captured: Blob[] = [];
+    const origCreate = globalThis.URL.createObjectURL;
+    globalThis.URL.createObjectURL = vi.fn((b: Blob) => {
+      captured.push(b);
+      return "blob:pdf";
+    }) as never;
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      headers: { get: () => 'multipart/related; type="application/octet-stream"' },
+      arrayBuffer: async () => multipart("%PDF-1.7 hello"),
+    })) as unknown as typeof fetch;
+    try {
+      const ds = new DicomWebDataSource({
+        root: "/pacs/dicom-web",
+        client: pdfClient as never,
+        fetchFn,
+      });
+      const series = { seriesInstanceUID: "DOC1", studyInstanceUID: "study-1" };
+      const url = await ds.getPdfObjectUrl(series, {
+        sopUid: "pdf-sop",
+        bulkDataUri: "http://orthanc/x/studies/study-1/series/DOC1/instances/pdf-sop/bulk/00420011",
+      });
+      expect(url).toBe("blob:pdf");
+      expect(fetchFn).toHaveBeenCalledWith(
+        "/pacs/dicom-web/studies/study-1/series/DOC1/instances/pdf-sop/bulk/00420011",
+        expect.objectContaining({ credentials: expect.any(String) }),
+      );
+      const bytes = new Uint8Array(await captured[0].arrayBuffer());
+      expect(new TextDecoder().decode(bytes)).toBe("%PDF-1.7 hello");
+    } finally {
+      globalThis.URL.createObjectURL = origCreate;
+    }
+  });
+});

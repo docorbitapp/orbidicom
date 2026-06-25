@@ -1,5 +1,16 @@
 # @orbidicom/vue
 
+## 0.2.0
+
+### Minor Changes
+
+- Render encapsulated-PDF report series. `DicomWebDataSource` gains `getPdfObjectUrl()` (WADO-RS bulk fetch with multipart unwrap, rebased onto the configured root, honoring cookie/bearer auth), and the `<Viewer>` shows a `PdfView` (lazy-loaded pdf.js) for PDF-only series instead of an empty cell. New `PdfInstance` type and optional `DataSource.listPdfs` / `getPdfObjectUrl` hooks.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @orbidicom/core@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes

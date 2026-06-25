@@ -1,6 +1,6 @@
 import { api } from "dicomweb-client";
 import { wadors } from "@cornerstonejs/dicom-image-loader";
-import type { DataSource, SeriesSummary, DataSourceCapabilities } from "../datasource";
+import type { DataSource, SeriesSummary, DataSourceCapabilities, PdfInstance } from "../datasource";
 import type { AuthStrategy } from "../auth";
 import { authHeaders } from "../auth";
 import { buildWadoRsImageId } from "../imageIds";
@@ -28,12 +28,6 @@ const ENCAPSULATED_PDF_SOP = "1.2.840.10008.5.1.4.1.1.104.1";
 // listed — the encapsulated-PDF path handles them.
 const NON_RENDERABLE_MODALITIES = new Set(["PR", "SR", "KO", "PLAN"]);
 
-export interface PdfInstance {
-  sopUid: string;
-  /** WADO-RS BulkDataURI for the EncapsulatedDocument, if the server advertised one. */
-  bulkDataUri: string | null;
-}
-
 /** The subset of dicomweb-client we use — lets tests inject a fake. */
 export interface DICOMwebClientLike {
   searchForSeries(opts: { studyInstanceUID: string }): Promise<Record<string, unknown>[]>;
@@ -55,6 +49,8 @@ export interface DicomWebOptions {
   auth?: AuthStrategy;
   /** Inject a pre-built client (tests, or a custom transport). */
   client?: DICOMwebClientLike;
+  /** Inject fetch (tests, or a custom transport) for the PDF bulk-data path. */
+  fetchFn?: typeof fetch;
 }
 
 /**
@@ -71,16 +67,23 @@ export class DicomWebDataSource implements DataSource {
   private root: string;
   private client: DICOMwebClientLike;
   private pdfsBySeries = new Map<string, PdfInstance[]>();
+  private fetchFn: typeof fetch;
+  private headers: Record<string, string>;
+  // Cookie auth rides on credentials; otherwise stay same-origin.
+  private credentials: RequestCredentials;
 
   constructor(opts: DicomWebOptions) {
     this.root = opts.root.replace(/\/$/, "");
     const auth = opts.auth ?? { kind: "none" };
+    this.headers = authHeaders(auth);
+    this.credentials = auth.kind === "cookie" ? "include" : "same-origin";
+    this.fetchFn = opts.fetchFn ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
     this.client =
       opts.client ??
       (new api.DICOMwebClient({
         url: this.root,
         singlepart: false,
-        headers: authHeaders(auth),
+        headers: this.headers,
         withCredentials: auth.kind === "cookie",
         // dicomweb-client types omit some options; cast to pass them through.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -153,4 +156,81 @@ export class DicomWebDataSource implements DataSource {
   listPdfs(series: SeriesSummary): PdfInstance[] {
     return this.pdfsBySeries.get(series.seriesInstanceUID) ?? [];
   }
+
+  /**
+   * Fetch an encapsulated PDF's bytes through the DICOMweb endpoint and return an
+   * object URL (application/pdf). The caller renders it (e.g. via pdf.js) and must
+   * revoke the URL when done.
+   *
+   * Prefers the server-advertised BulkDataURI (rebased onto our root so it stays
+   * same-origin), falling back to Orthanc's `/bulk/<tag>` form. WADO-RS bulk data
+   * comes back as multipart/related, so the MIME envelope is stripped.
+   */
+  async getPdfObjectUrl(series: SeriesSummary, pdf: PdfInstance): Promise<string> {
+    const studyUid = series.studyInstanceUID;
+    if (!studyUid)
+      throw new Error("DicomWebDataSource.getPdfObjectUrl requires series.studyInstanceUID");
+    const seriesUid = series.seriesInstanceUID;
+    const instanceUrl = `${this.root}/studies/${studyUid}/series/${seriesUid}/instances/${pdf.sopUid}`;
+
+    let bulkUri = pdf.bulkDataUri;
+    if (!bulkUri) {
+      try {
+        const metaRes = await this.fetchFn(`${instanceUrl}/metadata`, {
+          credentials: this.credentials,
+          headers: { Accept: "application/dicom+json", ...this.headers },
+        });
+        if (metaRes.ok) {
+          const json = (await metaRes.json()) as Record<string, { BulkDataURI?: string }>[];
+          bulkUri = json?.[0]?.[TAG.ENCAPSULATED_DOCUMENT]?.BulkDataURI ?? null;
+        }
+      } catch {
+        /* fall back to the constructed path below */
+      }
+    }
+
+    const url = bulkUri
+      ? proxyBulkUrl(this.root, bulkUri)
+      : `${instanceUrl}/bulk/${TAG.ENCAPSULATED_DOCUMENT}`;
+    const res = await this.fetchFn(url, {
+      credentials: this.credentials,
+      headers: { Accept: 'multipart/related; type="application/octet-stream"', ...this.headers },
+    });
+    if (!res.ok) throw new Error(`PDF fetch failed: ${res.status}`);
+    const buf = await res.arrayBuffer();
+    const payload = extractBulkPayload(buf, res.headers.get("Content-Type") ?? "");
+    return URL.createObjectURL(new Blob([payload], { type: "application/pdf" }));
+  }
+}
+
+/** Re-base a (possibly absolute / internal) BulkDataURI onto our same-origin root. */
+function proxyBulkUrl(root: string, uri: string): string {
+  const i = uri.indexOf("/studies/");
+  return i >= 0 ? `${root}${uri.slice(i)}` : uri;
+}
+
+/**
+ * Extract the payload of a WADO-RS bulk-data response. Servers return
+ * multipart/related; strip the MIME part headers and the trailing boundary.
+ * A single-part response is returned unchanged.
+ */
+function extractBulkPayload(buf: ArrayBuffer, contentType: string): ArrayBuffer {
+  if (!/multipart/i.test(contentType)) return buf;
+  const bytes = new Uint8Array(buf);
+  let start = -1;
+  for (let i = 0; i + 3 < bytes.length; i++) {
+    if (bytes[i] === 13 && bytes[i + 1] === 10 && bytes[i + 2] === 13 && bytes[i + 3] === 10) {
+      start = i + 4;
+      break;
+    }
+  }
+  if (start < 0) return buf;
+  let end = bytes.length;
+  for (let i = bytes.length - 4; i > start; i--) {
+    if (bytes[i] === 13 && bytes[i + 1] === 10 && bytes[i + 2] === 45 && bytes[i + 3] === 45) {
+      end = i;
+      break;
+    }
+  }
+  return buf.slice(start, end);
 }

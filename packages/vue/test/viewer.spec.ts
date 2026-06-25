@@ -52,6 +52,21 @@ const source = {
   getImageIds: vi.fn(async () => ["wadors:1", "wadors:2"]),
 };
 
+const pdfSource = {
+  capabilities: { downloadArchive: false, encapsulatedPdf: true, multiStudy: false },
+  getSeries: vi.fn(async () => [
+    {
+      seriesInstanceUID: "DOC1",
+      studyInstanceUID: "ST",
+      modality: "DOC",
+      seriesDescription: "Report",
+    },
+  ]),
+  getImageIds: vi.fn(async () => [] as string[]),
+  listPdfs: vi.fn(() => [{ sopUid: "pdf1", bulkDataUri: null }]),
+  getPdfObjectUrl: vi.fn(async () => "blob:report"),
+};
+
 describe("Viewer", () => {
   it("loads series from the data source on mount and renders the rail + first stack", async () => {
     const w = mount(Viewer, { props: { source: source as never, studyUids: ["ST"] } });
@@ -100,6 +115,20 @@ describe("Viewer", () => {
     await flushPromises();
     expect(w.find(".metapanel").exists()).toBe(true);
     expect(w.find(".metapanel").text()).toContain("TEST PATIENT");
+  });
+
+  it("renders a PdfView (not an image stack) for an encapsulated-PDF series", async () => {
+    stack.setStack.mockClear();
+    const w = mount(Viewer, {
+      props: { source: pdfSource as never, studyUids: ["ST"] },
+      global: {
+        stubs: { PdfView: { props: ["src"], template: '<div class="pdfstub">{{ src }}</div>' } },
+      },
+    });
+    await flushPromises();
+    expect(pdfSource.getPdfObjectUrl).toHaveBeenCalled();
+    expect(stack.setStack).not.toHaveBeenCalled();
+    expect(w.find(".pdfstub").text()).toBe("blob:report");
   });
 
   it("shows the number of grid cells chosen in the layout selector", async () => {
