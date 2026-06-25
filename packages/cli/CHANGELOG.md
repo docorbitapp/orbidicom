@@ -1,5 +1,12 @@
 # orbidicom
 
+## 0.3.1
+
+### Patch Changes
+
+- Add a README for the `orbidicom` CLI package so the npm page documents the project and
+  `npx orbidicom` usage (quick start, PACS + auth flags, deploy pointers).
+
 ## 0.3.0
 
 ### Minor Changes
