@@ -5,7 +5,18 @@ import pluginVue from "eslint-plugin-vue";
 import configPrettier from "eslint-config-prettier";
 
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/node_modules/**", "**/*.tsbuildinfo", "**/coverage/**"] },
+  {
+    // dist + the CLI's bundled demo build (packages/cli/public) are generated,
+    // minified artifacts — not source. (Prettier skips them via .gitignore;
+    // ESLint flat config does not read .gitignore, so list them here.)
+    ignores: [
+      "**/dist/**",
+      "packages/cli/public/**",
+      "**/node_modules/**",
+      "**/*.tsbuildinfo",
+      "**/coverage/**",
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   ...pluginVue.configs["flat/recommended"],

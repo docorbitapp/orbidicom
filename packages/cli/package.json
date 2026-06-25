@@ -1,7 +1,23 @@
 {
   "name": "orbidicom",
-  "version": "0.0.0",
-  "description": "CLI for OrbiDICOM, a modern, mobile-responsive, multilingual, Kubernetes-ready (Helm chart included) open-source DICOM viewer: `npx orbidicom` to run locally or against any PACS, `npm create orbidicom` to scaffold.",
+  "version": "0.1.0",
+  "description": "CLI for OrbiDICOM, a modern, mobile-responsive, multilingual, Kubernetes-ready (Helm chart included) open-source DICOM viewer: `npx orbidicom` to run locally or against any PACS.",
+  "license": "MIT",
+  "homepage": "https://github.com/docorbitapp/orbidicom#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/docorbitapp/orbidicom.git",
+    "directory": "packages/cli"
+  },
+  "bugs": "https://github.com/docorbitapp/orbidicom/issues",
+  "keywords": [
+    "dicom",
+    "dicomweb",
+    "viewer",
+    "cornerstone3d",
+    "pacs",
+    "cli"
+  ],
   "type": "module",
   "bin": {
     "orbidicom": "./bin/orbidicom.mjs"
@@ -9,17 +25,20 @@
   "main": "./dist/index.js",
   "files": [
     "dist",
-    "bin"
+    "bin",
+    "public"
   ],
+  "engines": {
+    "node": ">=20"
+  },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc -b && node ./scripts/bundle-demo.mjs",
     "test": "vitest run"
   },
   "dependencies": {
-    "@orbidicom/demo": "workspace:*",
     "sirv": "^3.0.0"
   },
   "devDependencies": {

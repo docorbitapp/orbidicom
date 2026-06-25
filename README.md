@@ -18,20 +18,36 @@ npx orbidicom
 ```
 
 Opens the viewer in your browser in **local mode** — drag in `.dcm` files, no server required.
-Point it at a PACS:
+Point it at a DICOMweb PACS, and optionally open a study on launch:
 
 ```bash
-npx orbidicom --pacs https://your-dicomweb-endpoint/dicom-web
+npx orbidicom --pacs https://your-dicomweb-endpoint/dicom-web --study 1.2.840.113619…
 ```
+
+`--pacs` and `--study` can also be passed at runtime through the URL —
+`…/?pacs=/dicom-web&study=1.2.840…` — so one hosted build (or the container image)
+can open any study without rebuilding or editing config.
 
 ## Use it in your app
 
+Install the packages and embed the viewer component:
+
 ```bash
-npm create orbidicom@latest
+npm install @orbidicom/vue @orbidicom/core vue
 ```
 
-Scaffolds a configured viewer you can theme, translate, and embed. See the
-[docs](./docs) and [CONTRIBUTING](./CONTRIBUTING.md).
+```ts
+import { Viewer } from "@orbidicom/vue";
+import "@orbidicom/vue/theme.css";
+import { DicomWebDataSource } from "@orbidicom/core";
+
+const source = new DicomWebDataSource({ root: "/dicom-web" });
+// <Viewer :source="source" :study-uids="['1.2.840…']" />
+```
+
+Theme it, translate it (live language switching, EN/TR/DE/ES), and plug in your own
+data sources and tools. See the [docs](./docs) and [CONTRIBUTING](./CONTRIBUTING.md).
+(A `npm create orbidicom` scaffolder is planned.)
 
 ## Deploy to Kubernetes
 
@@ -54,7 +70,7 @@ guide: [docs/deploy.md](./docs/deploy.md).
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `@orbidicom/core` | Framework-agnostic engine: Cornerstone3D setup, `DataSource` interface, DICOMweb + local adapters, auth strategies, tool/preset registry |
 | `@orbidicom/vue`  | Vue 3 UI components, theming, i18n, plugin host                                                                                          |
-| `orbidicom`       | CLI: `npx orbidicom` (run), `npm create orbidicom` (scaffold), `orbidicom ai` (optional assistant)                                       |
+| `orbidicom`       | CLI: `npx orbidicom` runs the viewer locally or against any DICOMweb PACS (`--pacs`, `--study`)                                          |
 
 ## License
 

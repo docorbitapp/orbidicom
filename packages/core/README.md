@@ -15,7 +15,7 @@ npm install @orbidicom/core
 ## Usage
 
 ```ts
-import { /* DataSource, registry, presets, ... */ } from "@orbidicom/core";
+import {} from /* DataSource, registry, presets, ... */ "@orbidicom/core";
 ```
 
 A backend is added by implementing the `DataSource` contract (`getSeries`, `getImageIds`,

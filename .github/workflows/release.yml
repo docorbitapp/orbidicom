@@ -1,0 +1,41 @@
+name: Publish to npm
+
+# Publishes the public packages (@orbidicom/core, @orbidicom/vue, orbidicom) to
+# the npm registry on a version tag (e.g. v0.1.0) or a manual run. Private
+# packages (@orbidicom/demo, create-orbidicom) are skipped by `pnpm -r publish`.
+#
+# Auth uses npm OIDC "trusted publishing" — there is NO NPM_TOKEN secret. npm
+# trusts this workflow via the trusted publisher configured on each package:
+#   Publisher: GitHub Actions · Org: docorbitapp · Repo: orbidicom · Workflow: release.yml
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # required for npm OIDC trusted publishing (+ provenance)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Reads pnpm from package.json "packageManager" — must be >= 10.12 for OIDC.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test
+
+      # Publishes every non-private workspace package whose version is not yet on
+      # the registry. workspace:* deps are rewritten to real versions by pnpm.
+      # OIDC supplies short-lived auth automatically — no token needed.
+      - run: pnpm -r publish --access public --no-git-checks
+        env:
+          NPM_CONFIG_PROVENANCE: "true"

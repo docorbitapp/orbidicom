@@ -1,9 +1,9 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
-  "changelog": ["@changesets/changelog-github", { "repo": "orbidicom/orbidicom" }],
+  "changelog": ["@changesets/changelog-github", { "repo": "docorbitapp/orbidicom" }],
   "commit": false,
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["@orbidicom/demo"]
+  "ignore": ["@orbidicom/demo", "orbidicom", "create-orbidicom"]
 }

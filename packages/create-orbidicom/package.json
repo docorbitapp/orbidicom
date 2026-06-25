@@ -2,6 +2,7 @@
   "name": "create-orbidicom",
   "version": "0.0.0",
   "description": "Scaffold a modern, mobile-responsive OrbiDICOM viewer app you can theme, translate, and embed.",
+  "private": true,
   "type": "module",
   "bin": {
     "create-orbidicom": "./bin/create.mjs"
