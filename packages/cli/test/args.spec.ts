@@ -1,0 +1,24 @@
+import { describe, it, expect } from "vitest";
+import { parseArgs } from "../src/args";
+
+describe("parseArgs", () => {
+  it("defaults to the serve command in local mode", () => {
+    const o = parseArgs([]);
+    expect(o.command).toBe("serve");
+    expect(o.pacs).toBeUndefined();
+    expect(o.open).toBe(true);
+  });
+
+  it("parses --pacs, --port and --no-open", () => {
+    const o = parseArgs(["--pacs", "https://example/dicom-web", "--port", "5999", "--no-open"]);
+    expect(o.command).toBe("serve");
+    expect(o.pacs).toBe("https://example/dicom-web");
+    expect(o.port).toBe(5999);
+    expect(o.open).toBe(false);
+  });
+
+  it("recognizes the ai and init subcommands", () => {
+    expect(parseArgs(["ai"]).command).toBe("ai");
+    expect(parseArgs(["init"]).command).toBe("init");
+  });
+});

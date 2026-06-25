@@ -1,0 +1,8 @@
+pnpm-lock.yaml
+dist/
+node_modules/
+*.tsbuildinfo
+coverage/
+CHANGELOG.md
+# Helm chart templates are Go-templated YAML — not Prettier-formattable.
+helm/

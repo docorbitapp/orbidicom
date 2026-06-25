@@ -1,0 +1,42 @@
+# Production preset for the OrbiDICOM chart. Copy, edit the host/upstream, then:
+#   helm install orbidicom ./helm/orbidicom -f helm/orbidicom/values-prod.yaml
+#
+# Tightens replicas, autoscaling, ingress + TLS, and resource bounds over the
+# defaults in values.yaml.
+
+replicaCount: 3
+
+pacs:
+  url: "/dicom-web"
+  proxy:
+    enabled: true
+    # Point at your in-cluster DICOMweb endpoint.
+    upstream: "http://orthanc.pacs.svc.cluster.local:8042/dicom-web"
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: orbidicom.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: orbidicom-tls
+      hosts:
+        - orbidicom.example.com
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 96Mi
+  limits:
+    memory: 256Mi

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+coverage/
+.env
+.env.*
+.vite/
+*.log
+
+# Internal planning/spec docs — not part of the OSS distribution
+docs/superpowers/

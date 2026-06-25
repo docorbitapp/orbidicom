@@ -1,0 +1,28 @@
+{
+  "name": "orbidicom",
+  "version": "0.0.0",
+  "description": "CLI for OrbiDICOM, a modern, mobile-responsive, multilingual, Kubernetes-ready (Helm chart included) open-source DICOM viewer: `npx orbidicom` to run locally or against any PACS, `npm create orbidicom` to scaffold.",
+  "type": "module",
+  "bin": {
+    "orbidicom": "./bin/orbidicom.mjs"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@orbidicom/demo": "workspace:*",
+    "sirv": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}

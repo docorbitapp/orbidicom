@@ -1,0 +1,29 @@
+# Build artifacts and deps — re-created inside the image.
+**/node_modules
+**/dist
+**/.turbo
+**/*.tsbuildinfo
+
+# VCS / CI / editor
+.git
+.github
+.vscode
+.idea
+
+# Local env / logs
+**/.env
+**/.env.*
+**/*.log
+.DS_Store
+
+# Docs / tests / meta not needed to build the SPA
+docs
+**/test
+**/*.spec.ts
+coverage
+
+# The deployment assets themselves (the image doesn't build itself)
+helm
+examples
+Dockerfile
+.dockerignore

@@ -1,0 +1,490 @@
+<template>
+  <div class="toolbar">
+    <!-- Mobile-only: hamburger that toggles the controls menu (language, host
+         actions, hint). In normal flow, right before the title. -->
+    <button
+      class="toolbar__menu"
+      :class="{ 'toolbar__menu--active': menuOpen }"
+      :title="t('menu')"
+      :aria-expanded="menuOpen ?? false"
+      @click="$emit('toggleMenu')"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+      >
+        <path v-if="!menuOpen" d="M4 7h16M4 12h16M4 17h16" />
+        <path v-else d="M6 6l12 12M18 6 6 18" />
+      </svg>
+    </button>
+    <span class="toolbar__title">{{ title ?? "OrbiDICOM" }}</span>
+    <div class="toolbar__sep" />
+
+    <!-- W/L presets only exist for CT; hidden for other modalities. -->
+    <template v-if="presets.length">
+      <label class="wl">
+        <span class="wl__label">W/L</span>
+        <select
+          class="wl__select"
+          :value="''"
+          :title="t('presetTitle')"
+          @change="onPreset(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="" disabled>{{ t("preset") }}</option>
+          <option v-for="p in presets" :key="p.name" :value="p.name">{{ p.name }}</option>
+        </select>
+      </label>
+      <div class="toolbar__sep" />
+    </template>
+
+    <!-- Active left-button tool (one at a time). -->
+    <div class="toolbar__group">
+      <button
+        v-for="tool in toolButtons"
+        :key="tool.name"
+        class="tbtn"
+        :class="{ 'tbtn--active': activeTool === tool.name }"
+        :title="t(tool.titleKey)"
+        @click="$emit('tool', tool.name)"
+      >
+        <!-- eslint-disable-next-line vue/no-v-html -- tool.icon is static, trusted SVG markup defined in this file -->
+        <svg viewBox="0 0 24 24" v-html="tool.icon" />
+      </button>
+      <button class="tbtn" :title="t('clearMeasurements')" @click="$emit('clearAnnotations')">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="toolbar__sep" />
+
+    <div class="toolbar__group">
+      <button class="tbtn" :title="t('invert')" @click="$emit('invert')">
+        <svg viewBox="0 0 24 24">
+          <rect
+            x="3"
+            y="3"
+            width="18"
+            height="18"
+            rx="2"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+          />
+          <path d="M3 21 21 3" stroke="currentColor" stroke-width="1.6" />
+          <path d="M3 21V3h18z" fill="currentColor" />
+        </svg>
+      </button>
+      <button class="tbtn" :title="t('rotate')" @click="$emit('rotate')">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+          <path d="M21 3v4h-4" />
+        </svg>
+      </button>
+      <button class="tbtn" :title="t('flip')" @click="$emit('flipH')">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M12 3v18" />
+          <path d="M8 7l-4 5 4 5" />
+          <path d="M16 7l4 5-4 5" />
+        </svg>
+      </button>
+      <button class="tbtn" :title="t('reset')" @click="$emit('reset')">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="toolbar__sep" />
+
+    <!-- Grid layout: 1×1 .. 2×5 (1/2/4/6/8/10 viewports). -->
+    <label class="layout" :title="t('layout')">
+      <svg
+        class="layout__icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+      >
+        <rect x="3" y="3" width="8" height="8" rx="1" />
+        <rect x="13" y="3" width="8" height="8" rx="1" />
+        <rect x="3" y="13" width="8" height="8" rx="1" />
+        <rect x="13" y="13" width="8" height="8" rx="1" />
+      </svg>
+      <select
+        class="layout__select"
+        :value="String(layout)"
+        @change="$emit('setLayout', Number(($event.target as HTMLSelectElement).value))"
+      >
+        <option v-for="opt in LAYOUT_OPTIONS" :key="opt.n" :value="opt.n">{{ opt.label }}</option>
+      </select>
+    </label>
+
+    <!-- Cycle the on-image overlay: full info -> patient data blurred -> hidden. -->
+    <button
+      class="tbtn tbtn--overlay"
+      :class="{ 'tbtn--active': mode !== 'off', 'tbtn--privacy': mode === 'private' }"
+      :title="overlayTitle"
+      @click="$emit('cycleOverlay')"
+    >
+      <!-- full: info circle -->
+      <svg
+        v-if="mode === 'full'"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 11v5" />
+        <circle cx="12" cy="8" r="0.6" fill="currentColor" stroke="none" />
+      </svg>
+      <!-- private: shield (patient data protected) -->
+      <svg
+        v-else-if="mode === 'private'"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z" />
+        <path d="M9 12l2 2 4-4" />
+      </svg>
+      <!-- off: eye with slash (overlay hidden) -->
+      <svg
+        v-else
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M3 12s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7z" />
+        <circle cx="12" cy="12" r="2.5" />
+        <path d="M3 3l18 18" />
+      </svg>
+    </button>
+
+    <!-- Open the full DICOM metadata reader panel. -->
+    <button class="tbtn tbtn--meta" :title="t('metadataTitle')" @click="$emit('openMeta')">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M7 9h4M7 13h10M7 17h10" />
+      </svg>
+    </button>
+
+    <template v-if="canDownload">
+      <div class="toolbar__sep" />
+      <button
+        class="tbtn tbtn--download"
+        :title="t('downloadStudy')"
+        @click="$emit('downloadStudy')"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M12 3v12M8 11l4 4 4-4M5 21h14" />
+        </svg>
+      </button>
+    </template>
+  </div>
+</template>
+<script setup lang="ts">
+import { computed } from "vue";
+import { windowPresetsFor, type WlPreset, TOOLS } from "@orbidicom/core";
+import { t, type I18nKey } from "../i18n";
+
+const props = defineProps<{
+  modality: string;
+  activeTool: string;
+  layout: number;
+  /** Overlay cycle state: full info, patient data blurred, or hidden. */
+  overlayMode?: "full" | "private" | "off";
+  /** Whether the mobile controls menu is open (for the hamburger state). */
+  menuOpen?: boolean;
+  title?: string;
+  canDownload?: boolean;
+}>();
+const emit = defineEmits<{
+  preset: [WlPreset];
+  tool: [string];
+  invert: [];
+  rotate: [];
+  flipH: [];
+  reset: [];
+  clearAnnotations: [];
+  setLayout: [number];
+  cycleOverlay: [];
+  openMeta: [];
+  toggleMenu: [];
+  downloadStudy: [];
+}>();
+
+const mode = computed(() => props.overlayMode ?? "full");
+const overlayTitle = computed(() =>
+  mode.value === "full"
+    ? t("overlayFull")
+    : mode.value === "private"
+      ? t("overlayPrivate")
+      : t("overlayOff"),
+);
+
+// Selectable viewport grids: cell count -> rows×cols label.
+const LAYOUT_OPTIONS = [
+  { n: 1, label: "1×1" },
+  { n: 2, label: "1×2" },
+  { n: 4, label: "2×2" },
+  { n: 6, label: "2×3" },
+  { n: 8, label: "2×4" },
+  { n: 10, label: "2×5" },
+];
+
+// Inner SVG markup per left-tool icon (static, trusted). Titles are stored as
+// i18n keys (not resolved strings) so they re-translate when the language changes.
+const toolButtons: { name: string; titleKey: I18nKey; icon: string }[] = [
+  {
+    name: TOOLS.WindowLevel,
+    titleKey: "toolWl",
+    icon: '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>',
+  },
+  {
+    name: TOOLS.Pan,
+    titleKey: "toolPan",
+    icon: '<path d="M12 2v20M2 12h20M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
+  },
+  {
+    name: TOOLS.Zoom,
+    titleKey: "toolZoom",
+    icon: '<circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M20 20l-4.3-4.3M11 8v6M8 11h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  },
+  {
+    name: TOOLS.Length,
+    titleKey: "toolLength",
+    icon: '<path d="M3 17 17 3l4 4L7 21z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7 13l2 2M11 9l2 2M15 5l2 2" stroke="currentColor" stroke-width="1.5"/>',
+  },
+  {
+    name: TOOLS.Angle,
+    titleKey: "toolAngle",
+    icon: '<path d="M4 20h16M4 20 17 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+  },
+  {
+    name: TOOLS.Rectangle,
+    titleKey: "toolRect",
+    icon: '<rect x="4" y="6" width="16" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.7"/>',
+  },
+  {
+    name: TOOLS.Ellipse,
+    titleKey: "toolEllipse",
+    icon: '<ellipse cx="12" cy="12" rx="8" ry="6" fill="none" stroke="currentColor" stroke-width="1.7"/>',
+  },
+  {
+    name: TOOLS.Probe,
+    titleKey: "toolProbe",
+    icon: '<circle cx="12" cy="12" r="2.5" fill="currentColor"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4" stroke="currentColor" stroke-width="1.6"/>',
+  },
+];
+
+const presets = computed(() => windowPresetsFor(props.modality));
+function onPreset(name: string) {
+  const p = presets.value.find((x) => x.name === name);
+  if (p) emit("preset", p);
+}
+</script>
+<style scoped>
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.toolbar__title {
+  flex: none;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+}
+.toolbar__sep {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+  flex: none;
+}
+.toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.tbtn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  flex: none;
+  transition:
+    background 0.12s,
+    color 0.12s,
+    border-color 0.12s;
+}
+.tbtn svg {
+  width: 19px;
+  height: 19px;
+}
+.tbtn:hover {
+  background: var(--elevated);
+  color: var(--text);
+  border-color: var(--border);
+}
+.tbtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.tbtn--active {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  border-color: var(--accent-strong);
+}
+/* Privacy mode: amber tint so it's obvious patient data is being blurred. */
+.tbtn--privacy {
+  color: #ffcf6b;
+  background: color-mix(in srgb, #b9852a 35%, transparent);
+  border-color: #b9852a;
+}
+.wl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.wl__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--hush);
+  letter-spacing: 0.4px;
+}
+.wl__select {
+  height: 34px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  background: var(--elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.layout {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  color: var(--muted);
+}
+.layout__icon {
+  width: 18px;
+  height: 18px;
+}
+.layout__select {
+  height: 34px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  background: var(--elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+/* Mobile-only hamburger in the header, in normal flow before the title.
+   Borderless ghost icon so it blends into the header (seamless, modern). */
+.toolbar__menu {
+  display: none;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin-left: -4px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.toolbar__menu svg {
+  width: 21px;
+  height: 21px;
+}
+.toolbar__menu:hover {
+  color: var(--text);
+  background: var(--elevated);
+}
+.toolbar__menu--active {
+  color: var(--accent-strong);
+}
+@media (max-width: 640px) {
+  .toolbar__menu {
+    display: grid;
+  }
+}
+</style>

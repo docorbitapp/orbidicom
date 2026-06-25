@@ -1,0 +1,20 @@
+/* packages/vue/src/theme.css — default OrbiDICOM theme. Override any var on your
+   own .orbidicom container (or :root) to re-skin. Neutral dark palette. */
+.orbidicom {
+  --bg: #0b0e0e;
+  --panel: #14191a;
+  --panel-2: #181e1f;
+  --elevated: #1f2728;
+  --border: #2a3334;
+  --text: #e6eded;
+  --muted: #9aa7a7;
+  --hush: #6b7777;
+  --accent: #1f6f78;
+  --accent-strong: #38b2bd;
+  --highlight: #e08636;
+  --highlight-strong: #c06f23;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --r-sm: 6px;
+  --r-md: 10px;
+}

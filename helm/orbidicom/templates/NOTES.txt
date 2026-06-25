@@ -1,0 +1,36 @@
+OrbiDICOM is deployed. 🩻
+
+{{- if .Values.ingress.enabled }}
+
+Reachable via Ingress:
+{{- range $h := .Values.ingress.hosts }}
+  {{- range $h.paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $h.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else if eq .Values.service.type "ClusterIP" }}
+
+The Service is ClusterIP (no external address). Port-forward to try it:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "orbidicom.fullname" . }} 8080:{{ .Values.service.port }}
+  # then open http://localhost:8080
+{{- end }}
+
+{{- if .Values.pacs.url }}
+
+PACS mode: the viewer calls DICOMweb at "{{ .Values.pacs.url }}".
+{{- if .Values.pacs.proxy.enabled }}
+  Same-origin reverse proxy is ON: /dicom-web → {{ .Values.pacs.proxy.upstream }}
+  (no CORS config needed on the PACS; keep it in-cluster).
+{{- else }}
+  Direct browser → PACS: ensure that endpoint sends CORS headers for this origin.
+{{- end }}
+{{- if .Values.pacs.studyUid }}
+  Auto-opens study {{ .Values.pacs.studyUid }} on load.
+{{- end }}
+{{- else }}
+
+Local-file mode: users drag .dcm / .zip / .nii files in the browser; no PACS.
+{{- end }}
+
+Tweak settings with `helm upgrade ... --set pacs.proxy.upstream=...` — see values.yaml.

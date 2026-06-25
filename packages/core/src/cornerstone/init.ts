@@ -1,0 +1,161 @@
+import { init as coreInit, imageLoadPoolManager, Enums as csCoreEnums } from "@cornerstonejs/core";
+// dicom-image-loader exposes init as a named export (also on the default object).
+import { init as dicomImageLoaderInit } from "@cornerstonejs/dicom-image-loader";
+import {
+  init as toolsInit,
+  addTool,
+  Enums as csToolsEnums,
+  ToolGroupManager,
+  WindowLevelTool,
+  ZoomTool,
+  PanTool,
+  StackScrollTool,
+  LengthTool,
+  AngleTool,
+  EllipticalROITool,
+  RectangleROITool,
+  ProbeTool,
+} from "@cornerstonejs/tools";
+import type { Types as CsToolsTypes } from "@cornerstonejs/tools";
+
+export const TOOL_GROUP_ID = "orbidicom";
+let started = false;
+
+/**
+ * Default frame request headers. Asks for frames in their ORIGINAL transfer
+ * syntax (no server-side transcoding): many PACS (e.g. Orthanc) fail to
+ * uncompress certain frames ("Cannot uncompress a DICOM image" -> HTTP 400);
+ * returning the stored bytes and decoding them with the bundled WASM codecs
+ * avoids that and offloads work from the PACS. Override via InitOptions.beforeSend
+ * for servers that prefer transcoded frames.
+ */
+const DEFAULT_BEFORE_SEND = (headers: Record<string, string>): Record<string, string> => ({
+  ...headers,
+  Accept: 'multipart/related; type="application/octet-stream"; transfer-syntax=*',
+});
+
+export interface InitOptions {
+  /**
+   * Frame-decode worker count. Defaults to most of the device's cores
+   * (`max(2, hardwareConcurrency - 1)`). The library's own default —
+   * `floor(hardwareConcurrency / 2)` — is often 1–2 on a phone and serializes
+   * WASM codec decoding, making large/compressed series crawl. Client-side CPU
+   * only; adds no extra PACS load (still one frame per displayed slice).
+   */
+  maxWebWorkers?: number;
+  /** Transform the default frame-request headers before each loader fetch. */
+  beforeSend?: (headers: Record<string, string>) => Record<string, string>;
+}
+
+const ALL_TOOLS = [
+  WindowLevelTool,
+  ZoomTool,
+  PanTool,
+  StackScrollTool,
+  LengthTool,
+  AngleTool,
+  EllipticalROITool,
+  RectangleROITool,
+  ProbeTool,
+];
+
+export async function initCornerstone(opts: InitOptions = {}): Promise<void> {
+  if (started) return;
+  await coreInit();
+  const beforeSend = opts.beforeSend ?? DEFAULT_BEFORE_SEND;
+  dicomImageLoaderInit({
+    // `globalThis.navigator?.` (not bare `navigator`): navigator is a browser
+    // global and only became a Node global in v21 — bare access throws
+    // ReferenceError under Node 20 (CI / SSR). Optional chaining falls back to 4.
+    maxWebWorkers:
+      opts.maxWebWorkers ?? Math.max(2, (globalThis.navigator?.hardwareConcurrency || 4) - 1),
+    beforeSend: (_xhr: unknown, _imageId: string, defaultHeaders: Record<string, string>) =>
+      beforeSend(defaultHeaders),
+    // Use the classic file-parsing loaders for wadouri/dicomfile + the
+    // metaDataManager-based wadors provider. cornerstone 5.x otherwise defaults
+    // to a metadata-first loader that needs naturalized metadata pre-populated,
+    // which local .dcm files (dicomfile:) don't have — so it can't find pixel
+    // data ("no COMPRESSED_FRAME_DATA"). This also matches how our data sources
+    // register metadata (DicomWebDataSource uses wadors.metaDataManager.add).
+    useLegacyMetadataProvider: true,
+  });
+  // Raise concurrent in-flight requests above Cornerstone's 6/5 defaults; over
+  // HTTP/2 we can keep many more frames in flight. Prefetch is LOWER priority
+  // than Interaction, so the active slice always jumps the queue.
+  imageLoadPoolManager.setMaxSimultaneousRequests(csCoreEnums.RequestType.Interaction, 12);
+  imageLoadPoolManager.setMaxSimultaneousRequests(csCoreEnums.RequestType.Prefetch, 10);
+
+  await toolsInit();
+  for (const t of ALL_TOOLS) addTool(t);
+
+  const tg = ToolGroupManager.createToolGroup(TOOL_GROUP_ID)!;
+  for (const name of ALL_TOOLS.map((t) => t.toolName)) tg.addTool(name);
+
+  // Mouse: left=W/L, right=pan, left+right=zoom, wheel + middle-drag=scroll.
+  // Touch: one finger drives the active tool (W/L by default), two fingers pan.
+  const { MouseBindings } = csToolsEnums;
+  tg.setToolActive(WindowLevelTool.toolName, {
+    bindings: [{ mouseButton: MouseBindings.Primary }, { numTouchPoints: 1 }],
+  });
+  tg.setToolActive(PanTool.toolName, {
+    bindings: [{ mouseButton: MouseBindings.Secondary }, { numTouchPoints: 2 }],
+  });
+  tg.setToolActive(ZoomTool.toolName, {
+    bindings: [{ mouseButton: MouseBindings.Primary_And_Secondary }],
+  });
+  tg.setToolActive(StackScrollTool.toolName, {
+    bindings: [{ mouseButton: MouseBindings.Wheel }, { mouseButton: MouseBindings.Auxiliary }],
+  });
+  started = true;
+}
+
+/** Tools selectable on the left mouse button (one active at a time). */
+export const TOOLS = {
+  WindowLevel: WindowLevelTool.toolName,
+  Pan: PanTool.toolName,
+  Zoom: ZoomTool.toolName,
+  Length: LengthTool.toolName,
+  Angle: AngleTool.toolName,
+  Rectangle: RectangleROITool.toolName,
+  Ellipse: EllipticalROITool.toolName,
+  Probe: ProbeTool.toolName,
+} as const;
+
+const PRIMARY_TOOLS = Object.values(TOOLS);
+
+/**
+ * Switch the active left-button tool. Pan always keeps right-click and Zoom
+ * keeps left+right; selecting Pan/Zoom just *adds* the left button to them.
+ * Re-applied wholesale each call so bindings can't drift.
+ *
+ * `removeAllBindings: true` is REQUIRED. A bare setToolPassive(name) only strips
+ * the tool's primary mouse binding and LEAVES THE TOOL ACTIVE, which left W/L
+ * active on one-finger touch forever. Clearing all bindings fully deactivates
+ * each tool before we re-bind below.
+ */
+export function setPrimaryTool(toolName: string): void {
+  const tg = ToolGroupManager.getToolGroup(TOOL_GROUP_ID);
+  if (!tg) return;
+  const { MouseBindings } = csToolsEnums;
+  for (const name of PRIMARY_TOOLS) tg.setToolPassive(name, { removeAllBindings: true });
+
+  const panBindings: CsToolsTypes.IToolBinding[] = [{ mouseButton: MouseBindings.Secondary }];
+  const zoomBindings: CsToolsTypes.IToolBinding[] = [
+    { mouseButton: MouseBindings.Primary_And_Secondary },
+  ];
+  const primaryTouch: CsToolsTypes.IToolBinding[] = [
+    { mouseButton: MouseBindings.Primary },
+    { numTouchPoints: 1 },
+  ];
+  // Two-finger gesture: pinch-zoom when Zoom is active, otherwise pan.
+  const pinch: CsToolsTypes.IToolBinding = { numTouchPoints: 2 };
+  if (toolName === TOOLS.Pan) panBindings.push(...primaryTouch, pinch);
+  else if (toolName === TOOLS.Zoom) zoomBindings.push(...primaryTouch, pinch);
+  else {
+    tg.setToolActive(toolName, { bindings: primaryTouch });
+    panBindings.push(pinch);
+  }
+
+  tg.setToolActive(TOOLS.Pan, { bindings: panBindings });
+  tg.setToolActive(TOOLS.Zoom, { bindings: zoomBindings });
+}

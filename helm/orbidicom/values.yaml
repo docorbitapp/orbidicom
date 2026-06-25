@@ -1,0 +1,113 @@
+# Default values for the OrbiDICOM viewer chart.
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/docorbitapp/orbidicom
+  # Defaults to the chart's appVersion when empty.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# --- PACS / DICOMweb integration ---------------------------------------------
+pacs:
+  # DICOMweb base URL the BROWSER calls. With proxy.enabled (below), keep the
+  # default "/dicom-web": the browser hits the viewer's own origin and nginx
+  # forwards to the PACS, so no CORS config is needed and the PACS stays
+  # in-cluster. For a direct browser→PACS setup, set proxy.enabled=false and put
+  # the PACS's public DICOMweb URL here (the PACS must then send CORS headers).
+  # Set to "" to ship a local-file-only viewer (no PACS UI).
+  url: "/dicom-web"
+  # Optionally auto-open a study on load (Study Instance UID).
+  studyUid: ""
+  proxy:
+    # Reverse-proxy /dicom-web on the pod to an in-cluster DICOMweb server.
+    enabled: true
+    # Upstream DICOMweb endpoint (e.g. an Orthanc/dcm4chee Service).
+    upstream: "http://orthanc:8042/dicom-web"
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  # annotations:
+  #   cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: orbidicom.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  # tls:
+  #   - secretName: orbidicom-tls
+  #     hosts:
+  #       - orbidicom.example.com
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 80
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Pod-level hardening. The container already runs as the unprivileged nginx
+# user (uid 101) from the base image.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 101
+  runAsGroup: 101
+  seccompProfile:
+    type: RuntimeDefault
+
+# Container hardening. readOnlyRootFilesystem stays false because the startup
+# script regenerates /usr/share/nginx/html/config.js (and the optional proxy
+# snippet) from env, and nginx writes to its temp/cache dirs.
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+# Probes hit the served SPA on the container port.
+livenessProbe:
+  httpGet:
+    path: /index.html
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 20
+readinessProbe:
+  httpGet:
+    path: /index.html
+    port: http
+  initialDelaySeconds: 3
+  periodSeconds: 10
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Extra environment variables passed straight to the container.
+extraEnv: []
+# extraEnv:
+#   - name: ORBIDICOM_TITLE
+#     value: "Hospital PACS"
