@@ -1,5 +1,14 @@
 # @orbidicom/vue
 
+## 0.2.1
+
+### Patch Changes
+
+- Maintenance release. Republishes the encapsulated-PDF support from 0.2.0 (whose release run did not complete publishing); no source changes. CI builds the container image amd64-only (emulated arm64 was prohibitively slow).
+
+- Updated dependencies []:
+  - @orbidicom/core@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes
