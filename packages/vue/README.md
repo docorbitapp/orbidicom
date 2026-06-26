@@ -29,10 +29,10 @@ CSS-variable theming.
 | ✅     | **Measurement export** — JSON + CSV                                                                                                                         |
 | ⬜     | **DICOM-SR export** — measurement SR generation + STOW-RS — _Tier 2_                                                                                        |
 | ⬜     | **DICOM-SEG** display — _Tier 2_                                                                                                                            |
-| ⬜     | **Hanging protocols** — _Tier 2_                                                                                                                            |
+| ✅     | **Hanging protocols** — `single` / `grid` built-ins + custom; `hanging-protocol` prop                                                                       |
 | ⬜     | **More data sources** — STOW-RS upload, DIMSE, cloud — _Tier 2_                                                                                             |
 | ⬜     | **Study list / worklist** — _Tier 2_                                                                                                                        |
-| ⬜     | **Plugin SDK** — _Tier 2_                                                                                                                                   |
+| ✅     | **Plugin SDK** — `registerPlugin` (tools / presets / data sources) + data-source factory registry                                                           |
 | ⬜     | **AI assist** — `orbidicom ai` — _Tier 3_                                                                                                                   |
 
 ## Install
@@ -74,6 +74,13 @@ Switch language at runtime (or drop in the `<LangSwitcher>` component):
 ```ts
 import { setLang } from "@orbidicom/vue";
 setLang("ja"); // en · tr · de · es · fr · it · pt · ru · zh · ja · ko · hi · id · nl · pl
+```
+
+Open multiple series at once with a hanging protocol (`single` — default — or `grid`, or a
+custom function):
+
+```vue
+<Viewer :source="source" hanging-protocol="grid" />
 ```
 
 Implement your own backend by satisfying the `DataSource` contract in `@orbidicom/core`

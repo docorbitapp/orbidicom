@@ -73,10 +73,10 @@ or a reverse proxy that injects auth server-side.
 | ✅     | **Measurement export** — JSON + CSV                                                           |
 | ⬜     | **DICOM-SR export** — measurement SR generation + STOW-RS — _Tier 2_                          |
 | ⬜     | **DICOM-SEG** display — _Tier 2_                                                              |
-| ⬜     | **Hanging protocols** — _Tier 2_                                                              |
+| ✅     | **Hanging protocols** — `single` / `grid` built-ins + custom                                  |
 | ⬜     | **More data sources** — STOW-RS upload, DIMSE, cloud — _Tier 2_                               |
 | ⬜     | **Study list / worklist** — _Tier 2_                                                          |
-| ⬜     | **Plugin SDK** — _Tier 2_                                                                     |
+| ✅     | **Plugin SDK** — `registerPlugin` + data-source factory registry                              |
 | ⬜     | **AI assist** — `orbidicom ai` — _Tier 3_                                                     |
 
 ## Embed or deploy

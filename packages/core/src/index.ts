@@ -1,6 +1,8 @@
 export * from "./datasource";
 export * from "./auth";
 export * from "./registry";
+export * from "./plugins";
+export * from "./hanging";
 export * from "./hotkeys";
 export * from "./imageIds";
 export * from "./presets";
@@ -12,3 +14,6 @@ export * from "./cornerstone/measurements";
 export * from "./datasources/dicomweb";
 export * from "./datasources/local";
 export * from "./datasources/nifti";
+// Side-effect import: registers the built-in adapters into the data-source
+// factory registry (keep last so the source modules above are initialized).
+import "./datasources/builtins";
