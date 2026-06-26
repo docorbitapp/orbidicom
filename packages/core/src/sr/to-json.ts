@@ -14,10 +14,22 @@ import type { SrCode } from "./types";
 // Comprehensive SR Storage SOP Class.
 const COMPREHENSIVE_SR_SOP = "1.2.840.10008.5.1.4.1.1.88.33";
 
-const REPORT_TITLE: SrCode = { value: "126000", scheme: "DCM", meaning: "Imaging Measurement Report" };
-const MEASUREMENTS_GROUP: SrCode = { value: "126010", scheme: "DCM", meaning: "Imaging Measurements" };
+const REPORT_TITLE: SrCode = {
+  value: "126000",
+  scheme: "DCM",
+  meaning: "Imaging Measurement Report",
+};
+const MEASUREMENTS_GROUP: SrCode = {
+  value: "126010",
+  scheme: "DCM",
+  meaning: "Imaging Measurements",
+};
 const MEASUREMENT_GROUP: SrCode = { value: "125007", scheme: "DCM", meaning: "Measurement Group" };
-const TRACKING_IDENTIFIER: SrCode = { value: "112039", scheme: "DCM", meaning: "Tracking Identifier" };
+const TRACKING_IDENTIFIER: SrCode = {
+  value: "112039",
+  scheme: "DCM",
+  meaning: "Tracking Identifier",
+};
 
 // Canonical stat name (index suffixes like "value[0]" collapse to "value") → concept.
 const STAT_CONCEPT: Record<string, SrCode> = {
