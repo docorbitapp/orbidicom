@@ -205,6 +205,7 @@ import {
   isVolumeCapable,
   VR_PRESETS,
   defaultVrPreset,
+  applyHangingProtocol,
 } from "@orbidicom/core";
 import type {
   StackHandle,
@@ -216,6 +217,8 @@ import type {
   SrTree,
   Keymap,
   MprHandle,
+  HangingProtocol,
+  HangingProtocolName,
 } from "@orbidicom/core";
 import { t } from "../i18n";
 
@@ -223,7 +226,12 @@ import { t } from "../i18n";
 // is the largest layout; every per-cell array is sized to it and the extra
 // cells are simply display:none (so their stacks stay attached to live DOM).
 const MAX_CELLS = 10;
-const VALID_LAYOUTS = new Set([1, 2, 4, 6, 8, 10]);
+const LAYOUT_SIZES = [1, 2, 4, 6, 8, 10];
+const VALID_LAYOUTS = new Set(LAYOUT_SIZES);
+// Snap an arbitrary cell count to the smallest grid layout that holds it (a
+// custom hanging protocol may return any number; the grid only renders these).
+const snapLayout = (n: number): number =>
+  LAYOUT_SIZES.find((c) => c >= n) ?? LAYOUT_SIZES[LAYOUT_SIZES.length - 1];
 const CINE_FPS = 10; // default playback speed
 const CINE_SPEEDS = [5, 10, 15, 20, 30]; // fps options in the bottom cine bar
 const LOAD_TIMEOUT_MS = 45_000;
@@ -234,6 +242,12 @@ const props = defineProps<{
   title?: string;
   /** Override the built-in keyboard shortcuts (merged over `DEFAULT_KEYMAP`). */
   keymap?: Keymap;
+  /**
+   * Initial hanging protocol applied once the study's series load: a built-in
+   * name (`"single"` — default — or `"grid"`) or a custom function. Controls how
+   * many cells open and which series fills each.
+   */
+  hangingProtocol?: HangingProtocolName | HangingProtocol;
 }>();
 const series = ref<SeriesSummary[]>([]);
 const cellCount = ref(1);
@@ -721,8 +735,26 @@ onMounted(async () => {
   unsubscribeMeasurements = onMeasurementsChanged(() => annotationVersion.value++);
   await initCornerstone();
   series.value = await props.source.getSeries(props.studyUids ?? []);
-  if (series.value.length) await loadIntoCell(0, 0);
+  if (series.value.length) await applyInitialLayout();
 });
+
+// Arrange the loaded series per the hanging protocol (default "single" keeps the
+// historical one-cell behavior). Loads each assigned cell; empty cells stay blank.
+async function applyInitialLayout() {
+  const { cellCount: cc, assignments } = applyHangingProtocol(
+    series.value,
+    props.hangingProtocol ?? "single",
+    { maxCells: MAX_CELLS },
+  );
+  // A custom protocol is host-supplied, so clamp to a layout the grid actually
+  // renders and never load past the fixed-size per-cell state arrays.
+  cellCount.value = snapLayout(cc);
+  activeCell.value = 0;
+  const cells = Math.min(cellCount.value, assignments.length, MAX_CELLS);
+  for (let c = 0; c < cells; c++) {
+    if (assignments[c] >= 0) await loadIntoCell(c, assignments[c]);
+  }
+}
 
 onUnmounted(() => {
   window.removeEventListener("keydown", onKeydown);

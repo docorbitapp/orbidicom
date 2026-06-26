@@ -61,6 +61,24 @@ registerWindowPreset({ modality: "MR", name: "Brain T2", windowWidth: 2200, wind
 windowPresetsFor("MR"); // → [{ modality: "MR", name: "Brain T2", … }]
 ```
 
+## Plugins & data sources
+
+Bundle tools, window presets, and backend factories into a plugin and register them in one
+call — they fan out to the registries the UI reads from:
+
+```ts
+import { registerPlugin, createDataSource } from "@orbidicom/core";
+
+registerPlugin({
+  name: "acme-extras",
+  windowPresets: [{ modality: "CT", name: "Stroke", windowWidth: 40, windowCenter: 40 }],
+  // tools: [...], dataSources: [{ id: "acme", label: "Acme PACS", create: (cfg) => new AcmeSource(cfg) }],
+});
+
+// The built-in adapters are pre-registered, so you can build one by id:
+const source = createDataSource("dicomweb", { root: "/dicom-web" });
+```
+
 ## Roadmap
 
 See the project [ROADMAP.md](https://github.com/docorbitapp/orbidicom/blob/main/ROADMAP.md).

@@ -77,6 +77,18 @@ vi.mock("@orbidicom/core", () => {
     onMeasurementsChanged: vi.fn(() => () => {}),
     createMprView,
     isVolumeCapable: (_s: unknown, n: number) => n >= 16,
+    // Honors a custom protocol function; any built-in name defaults to single view.
+    applyHangingProtocol: (
+      ser: unknown[],
+      proto: unknown,
+      opts: { maxCells: number },
+    ): { cellCount: number; assignments: number[] } =>
+      typeof proto === "function"
+        ? (proto as (s: unknown[], o: unknown) => { cellCount: number; assignments: number[] })(
+            ser,
+            opts,
+          )
+        : { cellCount: 1, assignments: [ser.length ? 0 : -1] },
     VR_PRESETS: ["CT-Bone", "CT-Soft-Tissue", "CT-Lung", "MR-Default"],
     defaultVrPreset: (m?: string) => (String(m).toUpperCase() === "MR" ? "MR-Default" : "CT-Bone"),
     TOOLS: {
@@ -120,6 +132,15 @@ const volumeSource = {
     },
   ]),
   getImageIds: vi.fn(async () => Array.from({ length: 20 }, (_, i) => `wadors:${i}`)),
+};
+
+const twoSeriesSource = {
+  capabilities: { downloadArchive: false, encapsulatedPdf: false, multiStudy: false },
+  getSeries: vi.fn(async () => [
+    { seriesInstanceUID: "A", studyInstanceUID: "ST", modality: "CT", seriesDescription: "Ax" },
+    { seriesInstanceUID: "B", studyInstanceUID: "ST", modality: "CT", seriesDescription: "Cor" },
+  ]),
+  getImageIds: vi.fn(async () => ["wadors:1", "wadors:2"]),
 };
 
 const pdfSource = {
@@ -316,6 +337,17 @@ describe("Viewer", () => {
     expect(w.find(".mpr").exists()).toBe(true);
     // The stack grid stays mounted (hidden), not destroyed.
     expect(w.find(".grid--hidden").exists()).toBe(true);
+  });
+
+  it("applies an initial hanging protocol, opening a multi-cell grid on load", async () => {
+    const protocol = () => ({ cellCount: 2, assignments: [0, 1] });
+    const w = mount(Viewer, {
+      props: { source: twoSeriesSource as never, hangingProtocol: protocol as never },
+    });
+    await flushPromises();
+    // The grid switched to 2-up (the default would have been a single cell).
+    expect(w.find(".grid--n2").exists()).toBe(true);
+    expect(twoSeriesSource.getImageIds).toHaveBeenCalledTimes(2); // both cells loaded
   });
 
   it("renders a 3D pane with a preset picker that drives setPreset", async () => {

@@ -35,13 +35,19 @@ differentiators.
 
 ### Tier 2 — differentiators that fit the thin + pluggable identity
 
-1. **Plugin SDK** — public tool/panel/data-source plugin API (formalize the registry).
-2. **DICOM-SEG display** — labelmap rendering (read-only first), then brush/threshold edit.
-3. **Hanging protocols (lightweight)** — auto-arrange series by modality into the grid;
-   reuses the existing grid + series rail.
-4. **More data sources** — STOW-RS upload, DIMSE adapter, DICOM-JSON, cloud adapters as
-   separate packages (all additive `DataSource` implementations, no UI branching).
-5. **Study list / worklist** — QIDO-RS study search instead of jumping straight to one study.
+- [x] **Plugin SDK** — `registerPlugin({ tools, windowPresets, dataSources })` fans contributions
+      out to the core registries; plus a data-source factory registry (`registerDataSource` /
+      `createDataSource`) with the built-in adapters pre-registered. _Shipped (tool/preset/
+      data-source contributions; Vue panels + locales remain a follow-up)._
+- [x] **Hanging protocols (lightweight)** — `applyHangingProtocol` maps a study's series onto the
+      grid (built-ins: `single`, `grid`; custom functions supported); the `<Viewer>`
+      `hanging-protocol` prop applies one on load. _Shipped._
+- [ ] **DICOM-SEG display** — labelmap rendering (read-only first), then brush/threshold edit.
+      _Needs a SEG parser (dcmjs) + WebGL labelmap QA._
+- [ ] **More data sources** — STOW-RS upload, DIMSE adapter, DICOM-JSON, cloud adapters as
+      separate packages (all additive `DataSource` implementations, no UI branching). _DIMSE/cloud
+      need a server-side bridge / external SDKs._
+- [ ] **Study list / worklist** — QIDO-RS study search instead of jumping straight to one study.
 
 ### Tier 3 — AI (the real differentiator)
 

@@ -36,10 +36,10 @@ single command.
 | ✅     | **Measurement export** — JSON + CSV                                                                                            |
 | ⬜     | **DICOM-SR export** — measurement SR generation + STOW-RS — _Tier 2_                                                           |
 | ⬜     | **DICOM-SEG** display — _Tier 2_                                                                                               |
-| ⬜     | **Hanging protocols** — _Tier 2_                                                                                               |
+| ✅     | **Hanging protocols** — `single` / `grid` built-ins + custom; `hanging-protocol` prop                                          |
 | ⬜     | **More data sources** — STOW-RS upload, DIMSE, cloud — _Tier 2_                                                                |
 | ⬜     | **Study list / worklist** — _Tier 2_                                                                                           |
-| ⬜     | **Plugin SDK** — public tool/panel/data-source API — _Tier 2_                                                                  |
+| ✅     | **Plugin SDK** — `registerPlugin` (tools / presets / data sources) + data-source factory registry                              |
 | ⬜     | **AI assist** — `orbidicom ai` (measurement, auto-W/L, report drafting) — _Tier 3_                                             |
 
 ## Try it in one command
@@ -76,7 +76,7 @@ const source = new DicomWebDataSource({ root: "/dicom-web" });
 // <Viewer :source="source" :study-uids="['1.2.840…']" />
 ```
 
-Theme it, translate it (live switching across 10 built-in languages — and easy to add
+Theme it, translate it (live switching across 15 built-in languages — and easy to add
 more), and plug in your own data sources and tools. See the [docs](./docs) and
 [CONTRIBUTING](./CONTRIBUTING.md). (A `npm create orbidicom` scaffolder is planned.)
 
