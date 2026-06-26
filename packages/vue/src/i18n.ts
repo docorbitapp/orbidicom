@@ -1158,3 +1158,28 @@ export function t(key: I18nKey): string {
   const table = (STRINGS as Record<string, Record<string, string>>)[current.value] ?? STRINGS.en;
   return table[key] ?? STRINGS.en[key];
 }
+
+// One Intl.DisplayNames instance per display language, built lazily.
+const displayNames = new Map<string, Intl.DisplayNames>();
+
+/**
+ * A language's name rendered IN the active UI language (an exonym) — e.g. with
+ * Turkish active, `localeName("ko")` is "Korece"; with English, "Korean". Uses
+ * the platform's `Intl.DisplayNames`; falls back to the locale's own endonym
+ * (from `LOCALES`) if the API is unavailable or returns nothing. Reads the active
+ * language reactively, so a switcher relabels live when the language changes.
+ */
+export function localeName(code: string, lang: string = current.value): string {
+  try {
+    let dn = displayNames.get(lang);
+    if (!dn) {
+      dn = new Intl.DisplayNames([lang], { type: "language" });
+      displayNames.set(lang, dn);
+    }
+    const name = dn.of(code);
+    if (name && name !== code) return name;
+  } catch {
+    /* Intl.DisplayNames unsupported — fall back to the endonym below. */
+  }
+  return LOCALES.find((l) => l.code === code)?.label ?? code;
+}

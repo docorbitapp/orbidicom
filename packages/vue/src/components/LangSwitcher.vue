@@ -61,18 +61,23 @@
       />
       <ul id="lang-listbox" class="lang__list" role="listbox">
         <li
-          v-for="(l, i) in filtered"
-          :id="`lang-opt-${l.code}`"
-          :key="l.code"
+          v-for="(it, i) in filtered"
+          :id="`lang-opt-${it.code}`"
+          :key="it.code"
           class="lang__opt"
-          :class="{ 'lang__opt--active': i === active, 'lang__opt--current': l.code === getLang() }"
+          :class="{
+            'lang__opt--active': i === active,
+            'lang__opt--current': it.code === getLang(),
+          }"
           role="option"
-          :aria-selected="l.code === getLang()"
-          @click="choose(l)"
+          :aria-selected="it.code === getLang()"
+          @click="choose(it)"
           @mousemove="active = i"
         >
-          <span class="lang__opt-label">{{ l.label }}</span>
-          <span class="lang__opt-code">{{ l.code }}</span>
+          <span class="lang__opt-label">{{ it.name }}</span>
+          <!-- The language's own endonym, so a misclick into an unfamiliar UI
+               language is still recoverable. Hidden when it equals the label. -->
+          <span v-if="it.showNative" class="lang__opt-native">{{ it.native }}</span>
         </li>
         <li v-if="filtered.length === 0" class="lang__empty">{{ t("langNoMatch") }}</li>
       </ul>
@@ -81,7 +86,16 @@
 </template>
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { t, setLang, getLang, LOCALES, type Locale } from "../i18n";
+import { t, setLang, getLang, LOCALES, localeName } from "../i18n";
+
+interface LangItem {
+  code: string;
+  /** Name in the active UI language (e.g. "Korece" when Turkish is active). */
+  name: string;
+  /** The language's own endonym (e.g. "한국어"). */
+  native: string;
+  showNative: boolean;
+}
 
 const rootEl = ref<HTMLElement | null>(null);
 const buttonEl = ref<HTMLButtonElement | null>(null);
@@ -90,19 +104,31 @@ const open = ref(false);
 const query = ref("");
 const active = ref(0);
 
-const currentLabel = computed(() => LOCALES.find((l) => l.code === getLang())?.label ?? getLang());
+// Each locale labeled in the active UI language; recomputes when the language
+// changes (localeName reads the active language reactively).
+const items = computed<LangItem[]>(() =>
+  LOCALES.map((l) => {
+    const name = localeName(l.code);
+    return { code: l.code, name, native: l.label, showNative: l.label !== name };
+  }),
+);
 
-// Diacritic-insensitive so "francais" finds "Français"; also matches the code.
+const currentLabel = computed(() => localeName(getLang()));
+
+// Diacritic-insensitive so "francais" finds "Français"; matches the localized
+// name, the endonym, and the code.
 const fold = (s: string) =>
   s
     .toLowerCase()
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "");
 
-const filtered = computed<Locale[]>(() => {
+const filtered = computed<LangItem[]>(() => {
   const q = fold(query.value.trim());
-  if (!q) return LOCALES;
-  return LOCALES.filter((l) => fold(l.label).includes(q) || l.code.includes(q));
+  if (!q) return items.value;
+  return items.value.filter(
+    (it) => fold(it.name).includes(q) || fold(it.native).includes(q) || it.code.includes(q),
+  );
 });
 
 // Keep the highlight in range as the filtered set shrinks/grows.
@@ -148,9 +174,9 @@ function scrollActiveIntoView() {
   );
 }
 
-function choose(l: Locale | undefined) {
-  if (!l) return;
-  setLang(l.code);
+function choose(it: LangItem | undefined) {
+  if (!it) return;
+  setLang(it.code);
   close(true);
 }
 
@@ -278,11 +304,9 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", onPointerDown)
   color: var(--accent-strong);
   font-weight: 600;
 }
-.lang__opt-code {
+.lang__opt-native {
   flex: 0 0 auto;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 12px;
   color: var(--muted);
 }
 .lang__empty {

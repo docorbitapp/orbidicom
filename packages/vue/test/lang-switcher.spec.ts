@@ -72,4 +72,16 @@ describe("LangSwitcher", () => {
     await w.find(".lang__search").trigger("keydown", { key: "Enter" });
     expect(getLang()).toBe("de");
   });
+
+  it("labels each language in the active UI language, keeping the endonym as a hint", async () => {
+    setLang("tr");
+    const w = mount(LangSwitcher);
+    // Trigger shows the active language localized (Turkish → "Türkçe").
+    expect(w.find(".lang__current").text()).toBe("Türkçe");
+
+    await w.find(".lang__button").trigger("click");
+    const ko = w.findAll(".lang__opt").find((o) => o.attributes("id") === "lang-opt-ko")!;
+    expect(ko.find(".lang__opt-label").text()).toBe("Korece"); // localized name
+    expect(ko.find(".lang__opt-native").text()).toBe("한국어"); // endonym hint
+  });
 });

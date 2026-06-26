@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { defineComponent, h, nextTick } from "vue";
 import { mount } from "@vue/test-utils";
-import { t, setLang, getLang, LOCALES, STRINGS } from "../src/i18n";
+import { t, setLang, getLang, LOCALES, STRINGS, localeName } from "../src/i18n";
 
 describe("i18n", () => {
   beforeEach(() => setLang("en"));
@@ -60,6 +60,19 @@ describe("i18n", () => {
   it("returns strings for the active language", () => {
     setLang("tr");
     expect(t("loading")).toBe("Yükleniyor…");
+  });
+
+  it("renders language names as exonyms in the active language (Intl.DisplayNames)", () => {
+    expect(localeName("ko", "en")).toBe("Korean");
+    expect(localeName("ko", "tr")).toBe("Korece"); // Korean, in Turkish
+    expect(localeName("de", "tr")).toBe("Almanca"); // German, in Turkish
+    // Reading without an explicit lang follows the active language.
+    setLang("tr");
+    expect(localeName("ja")).toBe("Japonca");
+    // Unknown display locale → resolves gracefully to a non-empty name (never the
+    // bare code); the endonym is the final fallback if Intl.DisplayNames is absent.
+    expect(localeName("ko", "zz")).toBeTruthy();
+    expect(localeName("ko", "zz")).not.toBe("ko");
   });
 
   it("falls back to English for an unknown language", () => {

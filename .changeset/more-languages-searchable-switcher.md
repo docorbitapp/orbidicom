@@ -10,7 +10,11 @@ Five more UI languages and a searchable language switcher.
   key-parity test guards against gaps).
 - **Searchable `LangSwitcher`** — the native `<select>` is replaced by an accessible combobox:
   a trigger showing the active language opens a popover with a type-to-filter search
-  (diacritic-insensitive, also matches the locale code), keyboard navigation, and
-  click-outside / Escape to dismiss.
+  (diacritic-insensitive, matches the localized name, the endonym, and the locale code),
+  keyboard navigation, and click-outside / Escape to dismiss.
+- **Localized language names** — each language is labeled in the active UI language via
+  `Intl.DisplayNames` (a new `localeName` helper), so with Turkish active "Korean" shows as
+  "Korece"; each row keeps the language's own endonym ("한국어") as a secondary hint so a
+  misclick into an unfamiliar UI language is still recoverable.
 - Right-to-left scripts (Arabic, Hebrew) are intentionally a follow-up — they need UI
   mirroring beyond a string table.
