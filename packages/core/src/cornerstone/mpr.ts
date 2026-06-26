@@ -89,11 +89,14 @@ const VOLUME_MODALITIES = new Set(["CT", "MR", "PT", "NM"]);
  * spacing) only happens at load time — see the runtime guard in `createMprView`.
  */
 export function isVolumeCapable(
-  series: Pick<SeriesSummary, "modality">,
+  series: Pick<SeriesSummary, "modality" | "volumetric">,
   sliceCount: number,
   opts: { min?: number } = {},
 ): boolean {
   if (sliceCount < (opts.min ?? 16)) return false;
+  // A source can mark a series volumetric directly (e.g. NIfTI, which carries no
+  // DICOM modality); otherwise fall back to the cross-sectional modalities.
+  if (series.volumetric) return true;
   return VOLUME_MODALITIES.has((series.modality ?? "").toUpperCase());
 }
 

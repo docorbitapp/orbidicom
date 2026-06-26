@@ -65,6 +65,9 @@ export class NiftiDataSource implements DataSource {
         modality: "NIfTI",
         seriesDescription: this.label,
         numberOfFrames: this.imageIds.length,
+        // NIfTI is inherently a 3D volume but has no DICOM modality, so flag it
+        // explicitly to make it eligible for MPR / 3D reconstruction.
+        volumetric: true,
       },
     ];
   }

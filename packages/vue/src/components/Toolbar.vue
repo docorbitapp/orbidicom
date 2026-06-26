@@ -156,7 +156,13 @@
         :value="mprActive ? 'mpr' : String(layout)"
         @change="onLayoutChange(($event.target as HTMLSelectElement).value)"
       >
-        <option v-for="opt in layoutOptions" :key="opt.n" :value="String(opt.n)">
+        <option
+          v-for="opt in layoutOptions"
+          :key="opt.n"
+          :value="String(opt.n)"
+          :disabled="opt.disabled"
+          :title="opt.disabled ? t('mprFailed') : undefined"
+        >
           {{ opt.label }}
         </option>
       </select>
@@ -383,10 +389,12 @@ const LAYOUT_OPTIONS: { n: number; label: string }[] = [
   { n: 8, label: "2×4" },
   { n: 10, label: "2×5" },
 ];
-// Append the MPR option only for volume-capable series.
-const layoutOptions = computed<{ n: number | "mpr"; label: string }[]>(() =>
-  props.canMpr ? [...LAYOUT_OPTIONS, { n: "mpr", label: t("mpr") }] : LAYOUT_OPTIONS,
-);
+// The MPR / 3D option is always listed (so it's discoverable), but disabled for
+// series that can't be reconstructed — a tooltip then explains why.
+const layoutOptions = computed<{ n: number | "mpr"; label: string; disabled: boolean }[]>(() => [
+  ...LAYOUT_OPTIONS.map((o) => ({ ...o, disabled: false })),
+  { n: "mpr", label: t("mpr"), disabled: !props.canMpr },
+]);
 // "mpr" stays a string sentinel; grid sizes parse to a number.
 function onLayoutChange(value: string) {
   emit("setLayout", value === "mpr" ? "mpr" : Number(value));

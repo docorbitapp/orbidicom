@@ -94,6 +94,12 @@ describe("isVolumeCapable", () => {
     expect(isVolumeCapable({ modality: "CT" }, 4)).toBe(false); // below min
     expect(isVolumeCapable({ modality: undefined }, 100)).toBe(false);
   });
+  it("accepts a series flagged volumetric regardless of modality (e.g. NIfTI)", () => {
+    expect(isVolumeCapable({ modality: "NIfTI", volumetric: true }, 100)).toBe(true);
+    expect(isVolumeCapable({ volumetric: true }, 100)).toBe(true);
+    expect(isVolumeCapable({ modality: "NIfTI" }, 100)).toBe(false); // no flag, unknown modality
+    expect(isVolumeCapable({ volumetric: true }, 4)).toBe(false); // min still applies
+  });
   it("honors a custom minimum slice count", () => {
     expect(isVolumeCapable({ modality: "CT" }, 8, { min: 8 })).toBe(true);
     expect(isVolumeCapable({ modality: "CT" }, 7, { min: 8 })).toBe(false);
