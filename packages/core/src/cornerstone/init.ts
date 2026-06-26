@@ -15,10 +15,14 @@ import {
   EllipticalROITool,
   RectangleROITool,
   ProbeTool,
+  CrosshairsTool,
+  TrackballRotateTool,
 } from "@cornerstonejs/tools";
 import type { Types as CsToolsTypes } from "@cornerstonejs/tools";
 
 export const TOOL_GROUP_ID = "orbidicom";
+/** Base id for MPR tool groups; createMprView appends a per-instance suffix. */
+export const MPR_TOOL_GROUP_ID = "orbidicom-mpr";
 let started = false;
 
 /**
@@ -87,6 +91,11 @@ export async function initCornerstone(opts: InitOptions = {}): Promise<void> {
 
   await toolsInit();
   for (const t of ALL_TOOLS) addTool(t);
+  // CrosshairsTool + TrackballRotateTool are registered globally but only added
+  // to the per-session MPR tool groups (createMprView), never to the stack group
+  // below: crosshairs reslice the orthographic planes, trackball rotates the 3D pane.
+  addTool(CrosshairsTool);
+  addTool(TrackballRotateTool);
 
   const tg = ToolGroupManager.createToolGroup(TOOL_GROUP_ID)!;
   for (const name of ALL_TOOLS.map((t) => t.toolName)) tg.addTool(name);

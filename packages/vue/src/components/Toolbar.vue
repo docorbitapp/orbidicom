@@ -47,7 +47,7 @@
         :key="tool.name"
         class="tbtn"
         :class="{ 'tbtn--active': activeTool === tool.name }"
-        :title="t(tool.titleKey)"
+        :title="toolTitle(tool)"
         @click="$emit('tool', tool.name)"
       >
         <!-- eslint-disable-next-line vue/no-v-html -- tool.icon is static, trusted SVG markup defined in this file -->
@@ -70,7 +70,11 @@
     <div class="toolbar__sep" />
 
     <div class="toolbar__group">
-      <button class="tbtn" :title="t('invert')" @click="$emit('invert')">
+      <button
+        class="tbtn"
+        :title="withKey(t('invert'), actionHotkey.invert)"
+        @click="$emit('invert')"
+      >
         <svg viewBox="0 0 24 24">
           <rect
             x="3"
@@ -86,7 +90,11 @@
           <path d="M3 21V3h18z" fill="currentColor" />
         </svg>
       </button>
-      <button class="tbtn" :title="t('rotate')" @click="$emit('rotate')">
+      <button
+        class="tbtn"
+        :title="withKey(t('rotate'), actionHotkey.rotate)"
+        @click="$emit('rotate')"
+      >
         <svg
           viewBox="0 0 24 24"
           fill="none"
@@ -99,7 +107,7 @@
           <path d="M21 3v4h-4" />
         </svg>
       </button>
-      <button class="tbtn" :title="t('flip')" @click="$emit('flipH')">
+      <button class="tbtn" :title="withKey(t('flip'), actionHotkey.flipH)" @click="$emit('flipH')">
         <svg
           viewBox="0 0 24 24"
           fill="none"
@@ -113,7 +121,7 @@
           <path d="M16 7l4 5-4 5" />
         </svg>
       </button>
-      <button class="tbtn" :title="t('reset')" @click="$emit('reset')">
+      <button class="tbtn" :title="withKey(t('reset'), actionHotkey.reset)" @click="$emit('reset')">
         <svg
           viewBox="0 0 24 24"
           fill="none"
@@ -145,10 +153,12 @@
       </svg>
       <select
         class="layout__select"
-        :value="String(layout)"
-        @change="$emit('setLayout', Number(($event.target as HTMLSelectElement).value))"
+        :value="mprActive ? 'mpr' : String(layout)"
+        @change="onLayoutChange(($event.target as HTMLSelectElement).value)"
       >
-        <option v-for="opt in LAYOUT_OPTIONS" :key="opt.n" :value="opt.n">{{ opt.label }}</option>
+        <option v-for="opt in layoutOptions" :key="opt.n" :value="String(opt.n)">
+          {{ opt.label }}
+        </option>
       </select>
     </label>
 
@@ -236,11 +246,87 @@
         </svg>
       </button>
     </template>
+
+    <!-- Save the active slice (image + measurements) as a JPEG. Hidden for
+         report cells / cells with no image stack. -->
+    <template v-if="canDownloadImage">
+      <div class="toolbar__sep" />
+      <button
+        class="tbtn tbtn--download-image"
+        :title="t('downloadImage')"
+        @click="$emit('downloadImage')"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <circle cx="8.5" cy="9" r="1.5" />
+          <path d="m21 16-5-5-4 4-2-2-4 4" />
+        </svg>
+      </button>
+    </template>
+
+    <!-- Export the drawn measurements as JSON or CSV. Hidden when there are none. -->
+    <template v-if="canExportMeasurements">
+      <div class="toolbar__sep" />
+      <div class="toolbar__group tbtn--export-measurements">
+        <button
+          class="tbtn"
+          :title="t('exportMeasurementsJson')"
+          @click="$emit('exportMeasurements', 'json')"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+            <path d="M14 3v6h6" />
+            <text
+              x="12"
+              y="18"
+              text-anchor="middle"
+              font-size="6"
+              fill="currentColor"
+              stroke="none"
+            >
+              {}
+            </text>
+          </svg>
+        </button>
+        <button
+          class="tbtn"
+          :title="t('exportMeasurementsCsv')"
+          @click="$emit('exportMeasurements', 'csv')"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+            <path d="M14 3v6h6" />
+            <path d="M8 16h2M12 16h2M16 16h0.5" />
+          </svg>
+        </button>
+      </div>
+    </template>
   </div>
 </template>
 <script setup lang="ts">
 import { computed } from "vue";
-import { windowPresetsFor, type WlPreset, TOOLS } from "@orbidicom/core";
+import { windowPresetsFor, type WlPreset, TOOLS, DEFAULT_KEYMAP } from "@orbidicom/core";
 import { t, type I18nKey } from "../i18n";
 
 const props = defineProps<{
@@ -253,6 +339,14 @@ const props = defineProps<{
   menuOpen?: boolean;
   title?: string;
   canDownload?: boolean;
+  /** Whether the active cell holds a rendered image stack that can be exported. */
+  canDownloadImage?: boolean;
+  /** Whether any measurements exist to export. */
+  canExportMeasurements?: boolean;
+  /** Whether the active series can be reconstructed in 3D (adds the MPR layout). */
+  canMpr?: boolean;
+  /** Whether the viewer is currently in MPR mode (so the selector shows "MPR"). */
+  mprActive?: boolean;
 }>();
 const emit = defineEmits<{
   preset: [WlPreset];
@@ -262,11 +356,13 @@ const emit = defineEmits<{
   flipH: [];
   reset: [];
   clearAnnotations: [];
-  setLayout: [number];
+  setLayout: [number | "mpr"];
   cycleOverlay: [];
   openMeta: [];
   toggleMenu: [];
   downloadStudy: [];
+  downloadImage: [];
+  exportMeasurements: ["json" | "csv"];
 }>();
 
 const mode = computed(() => props.overlayMode ?? "full");
@@ -279,7 +375,7 @@ const overlayTitle = computed(() =>
 );
 
 // Selectable viewport grids: cell count -> rows×cols label.
-const LAYOUT_OPTIONS = [
+const LAYOUT_OPTIONS: { n: number; label: string }[] = [
   { n: 1, label: "1×1" },
   { n: 2, label: "1×2" },
   { n: 4, label: "2×2" },
@@ -287,6 +383,14 @@ const LAYOUT_OPTIONS = [
   { n: 8, label: "2×4" },
   { n: 10, label: "2×5" },
 ];
+// Append the MPR option only for volume-capable series.
+const layoutOptions = computed<{ n: number | "mpr"; label: string }[]>(() =>
+  props.canMpr ? [...LAYOUT_OPTIONS, { n: "mpr", label: t("mpr") }] : LAYOUT_OPTIONS,
+);
+// "mpr" stays a string sentinel; grid sizes parse to a number.
+function onLayoutChange(value: string) {
+  emit("setLayout", value === "mpr" ? "mpr" : Number(value));
+}
 
 // Inner SVG markup per left-tool icon (static, trusted). Titles are stored as
 // i18n keys (not resolved strings) so they re-translate when the language changes.
@@ -338,6 +442,23 @@ function onPreset(name: string) {
   const p = presets.value.find((x) => x.name === name);
   if (p) emit("preset", p);
 }
+
+// Reverse-lookup the built-in shortcut for each tool / view action so tooltips
+// can advertise it (e.g. "Zoom (Z)"). Single-character keys only.
+const toolHotkey: Record<string, string> = {};
+const actionHotkey: Record<string, string> = {};
+for (const [key, cmd] of Object.entries(DEFAULT_KEYMAP)) {
+  if (key.length !== 1) continue;
+  const k = key.toUpperCase();
+  if (cmd.kind === "tool") toolHotkey[TOOLS[cmd.tool]] = k;
+  else if (cmd.kind === "invert") actionHotkey.invert = k;
+  else if (cmd.kind === "rotate") actionHotkey.rotate = k;
+  else if (cmd.kind === "flipH") actionHotkey.flipH = k;
+  else if (cmd.kind === "reset") actionHotkey.reset = k;
+}
+const withKey = (label: string, key?: string) => (key ? `${label} (${key})` : label);
+const toolTitle = (tool: { name: string; titleKey: I18nKey }) =>
+  withKey(t(tool.titleKey), toolHotkey[tool.name]);
 </script>
 <style scoped>
 .toolbar {

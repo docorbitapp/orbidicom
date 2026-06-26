@@ -93,6 +93,7 @@ function fakeEl(): HTMLDivElement {
   return {
     addEventListener: h.evtAdd,
     removeEventListener: h.evtRemove,
+    querySelector: vi.fn(() => null),
   } as unknown as HTMLDivElement;
 }
 
@@ -116,6 +117,7 @@ describe("createStack", () => {
       "flipH",
       "reset",
       "clearAnnotations",
+      "captureSliceJpeg",
       "destroy",
     ]) {
       expect(typeof (handle as unknown as Record<string, unknown>)[m]).toBe("function");
@@ -130,5 +132,18 @@ describe("createStack", () => {
     handle.destroy();
     handle.destroy();
     expect(h.engine.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("captureSliceJpeg resolves null once the viewport is destroyed", async () => {
+    const handle = createStack(fakeEl());
+    handle.destroy();
+    await expect(handle.captureSliceJpeg()).resolves.toBeNull();
+  });
+
+  it("captureSliceJpeg resolves null when there is no rendered image canvas", async () => {
+    // No getCanvas() on the viewport and querySelector('canvas') → null models a
+    // report/SR/PDF cell: nothing to capture, so it resolves null (not an error).
+    const handle = createStack(fakeEl());
+    await expect(handle.captureSliceJpeg()).resolves.toBeNull();
   });
 });

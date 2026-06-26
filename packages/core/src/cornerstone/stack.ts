@@ -1,16 +1,15 @@
 import { RenderingEngine, Enums, eventTarget, cache } from "@cornerstonejs/core";
 import { ToolGroupManager, utilities as csToolsUtils, annotation } from "@cornerstonejs/tools";
 import { TOOL_GROUP_ID } from "./init";
+import { voiToWl, nextFrame, compositeSliceJpeg, type WindowLevel } from "./capture";
+
+export type { WindowLevel };
 
 let seq = 0;
 
 export interface SliceInfo {
   index: number;
   count: number;
-}
-export interface WindowLevel {
-  ww: number;
-  wc: number;
 }
 export interface PrefetchProgress {
   /** Frames decoded into cache so far. */
@@ -38,12 +37,16 @@ export interface StackHandle {
   flipH: () => void;
   reset: () => void;
   clearAnnotations: () => void;
+  /**
+   * Composite the active slice (rendered image + the measurement/annotation SVG
+   * overlay) into an opaque JPEG Blob. Does NOT include the metadata text overlay
+   * (that's a separate DOM layer outside the viewport canvas/SVG). Resolves to the
+   * Blob; the caller triggers the download. Resolves null if the viewport is
+   * destroyed or has no rendered image canvas (e.g. report/SR/PDF cells).
+   * @param quality JPEG quality 0..1 (default 0.95 — visually lossless).
+   */
+  captureSliceJpeg: (quality?: number) => Promise<Blob | null>;
   destroy: () => void;
-}
-
-function voiToWl(voi: { lower: number; upper: number } | undefined): WindowLevel | null {
-  if (!voi) return null;
-  return { ww: Math.round(voi.upper - voi.lower), wc: Math.round((voi.upper + voi.lower) / 2) };
 }
 
 export function createStack(element: HTMLDivElement, cb: StackCallbacks = {}): StackHandle {
@@ -214,6 +217,19 @@ export function createStack(element: HTMLDivElement, cb: StackCallbacks = {}): S
       // the SVG overlay until an annotation render is triggered for this element.
       csToolsUtils.triggerAnnotationRenderForViewportIds([viewportId]);
       vp.render();
+    },
+    async captureSliceJpeg(quality = 0.95) {
+      if (destroyed) return null;
+      // render() is rAF-deferred: flush it and wait a frame so the 2D canvas
+      // holds the current slice even right after a slice/transform change.
+      vp.render?.();
+      await nextFrame();
+      if (destroyed) return null;
+      const canvas: HTMLCanvasElement | null =
+        (typeof vp.getCanvas === "function" ? vp.getCanvas() : null) ??
+        element.querySelector("canvas");
+      if (!canvas) return null;
+      return compositeSliceJpeg(element, canvas, quality);
     },
     destroy() {
       if (destroyed) return;

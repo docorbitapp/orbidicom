@@ -13,28 +13,84 @@ const stack = {
   flipH: vi.fn(),
   reset: vi.fn(),
   clearAnnotations: vi.fn(),
+  captureSliceJpeg: vi.fn().mockResolvedValue(new Blob(["x"], { type: "image/jpeg" })),
   destroy: vi.fn(),
 };
-vi.mock("@orbidicom/core", () => ({
-  initCornerstone: vi.fn().mockResolvedValue(undefined),
-  setPrimaryTool: vi.fn(),
-  createStack: vi.fn(() => stack),
-  readImageMetadata: vi.fn(async () => ({ patientName: "TEST^PATIENT", patientId: "ID1" })),
-  readMetadataGroups: vi.fn(async () => [
-    { id: "patient", rows: [{ label: "Patient Name", value: "TEST PATIENT" }] },
-  ]),
-  windowPresetsFor: () => [],
-  TOOLS: {
-    WindowLevel: "WindowLevel",
-    Pan: "Pan",
-    Zoom: "Zoom",
-    Length: "Length",
-    Angle: "Angle",
-    Rectangle: "Rectangle",
-    Ellipse: "Ellipse",
-    Probe: "Probe",
-  },
-}));
+// Hoisted so the vi.mock factory (which Vitest lifts above imports) can read them.
+const { setPrimaryTool, collectMeasurements, mprHandle, createMprView } = vi.hoisted(() => {
+  const mprHandle = {
+    setVolume: vi.fn().mockResolvedValue(undefined),
+    setWindowLevel: vi.fn(),
+    setPreset: vi.fn(),
+    reset: vi.fn(),
+    captureJpeg: vi.fn().mockResolvedValue(null),
+    destroy: vi.fn(),
+  };
+  return {
+    setPrimaryTool: vi.fn(),
+    collectMeasurements: vi.fn(() => [] as unknown[]),
+    mprHandle,
+    // Fire onReady synchronously so the viewer's mprReady gate flips (the preset
+    // picker is disabled until the volume is ready); the real handle fires it
+    // after the volume builds.
+    createMprView: vi.fn((_els: unknown, cb?: { onReady?: () => void }) => {
+      cb?.onReady?.();
+      return mprHandle;
+    }),
+  };
+});
+vi.mock("@orbidicom/core", () => {
+  // Minimal stand-ins for the pure hotkey helpers (the real ones live in core).
+  const DEFAULT_KEYMAP: Record<string, unknown> = {
+    z: { kind: "tool", tool: "Zoom" },
+    i: { kind: "invert" },
+    " ": { kind: "cine" },
+    ArrowRight: { kind: "scroll", delta: 1 },
+    "1": { kind: "preset", index: 0 },
+  };
+  const resolveHotkey = (
+    e: { key: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean },
+    map: Record<string, unknown> = DEFAULT_KEYMAP,
+  ) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return null;
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    return map[k] ?? null;
+  };
+  return {
+    initCornerstone: vi.fn().mockResolvedValue(undefined),
+    setPrimaryTool,
+    createStack: vi.fn(() => stack),
+    readImageMetadata: vi.fn(async () => ({ patientName: "TEST^PATIENT", patientId: "ID1" })),
+    readMetadataGroups: vi.fn(async () => [
+      { id: "patient", rows: [{ label: "Patient Name", value: "TEST PATIENT" }] },
+    ]),
+    // CT exposes the first standard window so the "1" preset hotkey has a target.
+    windowPresetsFor: (m: string) =>
+      m === "CT"
+        ? [{ modality: "CT", name: "Soft Tissue", windowWidth: 400, windowCenter: 40 }]
+        : [],
+    resolveHotkey,
+    DEFAULT_KEYMAP,
+    collectMeasurements,
+    measurementsToJson: vi.fn(() => "{}"),
+    measurementsToCsv: vi.fn(() => ""),
+    onMeasurementsChanged: vi.fn(() => () => {}),
+    createMprView,
+    isVolumeCapable: (_s: unknown, n: number) => n >= 16,
+    VR_PRESETS: ["CT-Bone", "CT-Soft-Tissue", "CT-Lung", "MR-Default"],
+    defaultVrPreset: (m?: string) => (String(m).toUpperCase() === "MR" ? "MR-Default" : "CT-Bone"),
+    TOOLS: {
+      WindowLevel: "WindowLevel",
+      Pan: "Pan",
+      Zoom: "Zoom",
+      Length: "Length",
+      Angle: "Angle",
+      Rectangle: "Rectangle",
+      Ellipse: "Ellipse",
+      Probe: "Probe",
+    },
+  };
+});
 
 import Viewer from "../src/components/Viewer.vue";
 
@@ -50,6 +106,20 @@ const source = {
     },
   ]),
   getImageIds: vi.fn(async () => ["wadors:1", "wadors:2"]),
+};
+
+const volumeSource = {
+  capabilities: { downloadArchive: false, encapsulatedPdf: false, multiStudy: false },
+  getSeries: vi.fn(async () => [
+    {
+      seriesInstanceUID: "V1",
+      studyInstanceUID: "ST",
+      modality: "CT",
+      seriesDescription: "Volume",
+      numberOfFrames: 20,
+    },
+  ]),
+  getImageIds: vi.fn(async () => Array.from({ length: 20 }, (_, i) => `wadors:${i}`)),
 };
 
 const pdfSource = {
@@ -139,5 +209,128 @@ describe("Viewer", () => {
     await w.find(".layout__select").setValue("6");
     await flushPromises();
     expect(w.findAll(".cell:not(.cell--hidden)").length).toBe(6);
+  });
+
+  it("keyboard shortcuts drive tool / view / preset actions on the active cell", async () => {
+    setPrimaryTool.mockClear();
+    stack.invert.mockClear();
+    stack.setWindowLevel.mockClear();
+    mount(Viewer, { props: { source: source as never } });
+    await flushPromises();
+
+    // 'z' selects the Zoom tool.
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "z" }));
+    expect(setPrimaryTool).toHaveBeenCalledWith("Zoom");
+
+    // 'i' inverts the active stack.
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "i" }));
+    expect(stack.invert).toHaveBeenCalled();
+
+    // '1' applies the first window preset for the active (CT) modality.
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "1" }));
+    expect(stack.setWindowLevel).toHaveBeenCalledWith(400, 40);
+  });
+
+  it("ignores shortcuts modified with Ctrl/Cmd (browser shortcuts pass through)", async () => {
+    setPrimaryTool.mockClear();
+    mount(Viewer, { props: { source: source as never } });
+    await flushPromises();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true }));
+    expect(setPrimaryTool).not.toHaveBeenCalled();
+  });
+
+  it("downloads the active slice as a JPEG (image + annotations) with a sensible filename", async () => {
+    stack.captureSliceJpeg.mockClear();
+    // jsdom doesn't implement object URLs or anchor navigation — stub them.
+    URL.createObjectURL = vi.fn(() => "blob:mock");
+    URL.revokeObjectURL = vi.fn();
+    let downloadName = "";
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloadName = this.download;
+    });
+
+    const w = mount(Viewer, { props: { source: source as never } });
+    await flushPromises();
+
+    const btn = w.find(".tbtn--download-image");
+    expect(btn.exists()).toBe(true); // CT series loaded → image stack present
+    await btn.trigger("click");
+    expect(stack.captureSliceJpeg).toHaveBeenCalled();
+    await flushPromises();
+
+    expect(URL.createObjectURL).toHaveBeenCalled();
+    expect(clickSpy).toHaveBeenCalled();
+    // series "Axial", first slice (1-based) → "Axial_1.jpg"
+    expect(downloadName).toBe("Axial_1.jpg");
+    clickSpy.mockRestore();
+  });
+
+  it("shows the measurement-export buttons only when measurements exist, and downloads JSON", async () => {
+    URL.createObjectURL = vi.fn(() => "blob:mock");
+    URL.revokeObjectURL = vi.fn();
+    let downloadName = "";
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloadName = this.download;
+    });
+
+    // No measurements → export group hidden.
+    collectMeasurements.mockReturnValue([]);
+    const w = mount(Viewer, { props: { source: source as never } });
+    await flushPromises();
+    expect(w.find(".tbtn--export-measurements").exists()).toBe(false);
+
+    // Measurements present → group shows after an annotation-change bump.
+    collectMeasurements.mockReturnValue([{ tool: "Length" }]);
+    // doClearAnnotations bumps annotationVersion; simpler: remount to re-evaluate.
+    const w2 = mount(Viewer, { props: { source: source as never } });
+    await flushPromises();
+    const group = w2.find(".tbtn--export-measurements");
+    expect(group.exists()).toBe(true);
+    await group.findAll("button")[0].trigger("click"); // JSON
+    await flushPromises();
+    expect(URL.createObjectURL).toHaveBeenCalled();
+    expect(downloadName).toMatch(/Axial_measurements_.*\.json$/);
+    clickSpy.mockRestore();
+  });
+
+  it("offers MPR for a volume-capable series and builds the volume on selection", async () => {
+    createMprView.mockClear();
+    mprHandle.setVolume.mockClear();
+    const w = mount(Viewer, { props: { source: volumeSource as never } });
+    await flushPromises();
+
+    // The MPR option is present for a 20-slice CT and the MPR panes aren't shown yet.
+    const opts = w.findAll(".layout__select option").map((o) => o.attributes("value"));
+    expect(opts).toContain("mpr");
+    expect(w.find(".mpr").exists()).toBe(false);
+
+    await w.find(".layout__select").setValue("mpr");
+    await flushPromises();
+
+    expect(createMprView).toHaveBeenCalledOnce();
+    expect(mprHandle.setVolume).toHaveBeenCalled();
+    expect(w.find(".mpr").exists()).toBe(true);
+    // The stack grid stays mounted (hidden), not destroyed.
+    expect(w.find(".grid--hidden").exists()).toBe(true);
+  });
+
+  it("renders a 3D pane with a preset picker that drives setPreset", async () => {
+    mprHandle.setPreset.mockClear();
+    const w = mount(Viewer, { props: { source: volumeSource as never } });
+    await flushPromises();
+    await w.find(".layout__select").setValue("mpr");
+    await flushPromises();
+
+    const presetSelect = w.find(".mpr__preset select");
+    expect(presetSelect.exists()).toBe(true);
+    // CT volume defaults to the CT-Bone preset.
+    expect((presetSelect.element as HTMLSelectElement).value).toBe("CT-Bone");
+
+    await presetSelect.setValue("CT-Lung");
+    expect(mprHandle.setPreset).toHaveBeenCalledWith("CT-Lung");
   });
 });

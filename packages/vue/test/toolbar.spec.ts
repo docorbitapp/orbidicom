@@ -32,6 +32,37 @@ describe("Toolbar", () => {
     expect(withDl.find(".tbtn--download").exists()).toBe(true);
   });
 
+  it("renders the download-image button only when canDownloadImage is true, and emits", async () => {
+    const without = mount(Toolbar, {
+      props: { modality: "CT", activeTool: "WindowLevel", layout: 1 },
+    });
+    expect(without.find(".tbtn--download-image").exists()).toBe(false);
+
+    const w = mount(Toolbar, {
+      props: { modality: "CT", activeTool: "WindowLevel", layout: 1, canDownloadImage: true },
+    });
+    const btn = w.find(".tbtn--download-image");
+    expect(btn.exists()).toBe(true);
+    await btn.trigger("click");
+    expect(w.emitted("downloadImage")).toBeTruthy();
+  });
+
+  it("shows the measurement-export buttons when canExportMeasurements and emits the format", async () => {
+    const without = mount(Toolbar, {
+      props: { modality: "CT", activeTool: "WindowLevel", layout: 1 },
+    });
+    expect(without.find(".tbtn--export-measurements").exists()).toBe(false);
+
+    const w = mount(Toolbar, {
+      props: { modality: "CT", activeTool: "WindowLevel", layout: 1, canExportMeasurements: true },
+    });
+    const buttons = w.find(".tbtn--export-measurements").findAll("button");
+    expect(buttons).toHaveLength(2);
+    await buttons[0].trigger("click");
+    await buttons[1].trigger("click");
+    expect(w.emitted("exportMeasurements")).toEqual([["json"], ["csv"]]);
+  });
+
   it("emits tool when a tool button is clicked", async () => {
     const w = mount(Toolbar, {
       props: { modality: "MR", activeTool: "WindowLevel", layout: 1 },

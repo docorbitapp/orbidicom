@@ -9,7 +9,7 @@ describe("Controls", () => {
       slots: { default: '<button class="host-action">New study</button>' },
     });
     expect(w.find(".host-action").exists()).toBe(true);
-    expect(w.find(".lang__select").exists()).toBe(true);
+    expect(w.find(".lang__button").exists()).toBe(true);
     expect(w.find(".dock__hint").exists()).toBe(true);
   });
 
