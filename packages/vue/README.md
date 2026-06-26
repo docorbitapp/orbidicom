@@ -2,7 +2,7 @@
 
 Vue 3 UI for [OrbiDICOM](https://github.com/docorbitapp/orbidicom) — a modern, mobile-responsive,
 multilingual DICOM viewer. Components: `Viewer`, `Toolbar`, `SeriesRail`, `MetaPanel`,
-`LangSwitcher`, `Controls`, plus live i18n (15 built-in languages, searchable switcher) and
+`LangSwitcher`, `Controls`, plus live i18n (20 built-in languages incl. RTL, searchable switcher) and
 CSS-variable theming.
 
 > This package ships Vue single-file components as **source**. You need a Vue 3 + bundler
@@ -24,14 +24,15 @@ CSS-variable theming.
 | ✅     | **Reports** — encapsulated PDF + DICOM Structured Report (SR)                                                                                               |
 | ✅     | **Metadata** — on-image overlay with privacy blur + full DICOM tag reader                                                                                   |
 | ✅     | **Renders from any [`DataSource`](https://github.com/docorbitapp/orbidicom/blob/main/packages/core/src/datasource.ts)** — UI never branches on backend type |
-| ✅     | **15 UI languages** (`setLang`, searchable `LangSwitcher`) + CSS-variable theming                                                                           |
+| ✅     | **20 UI languages** (`setLang`, searchable `LangSwitcher`, RTL-aware) + CSS-variable theming                                                                |
 | ✅     | **MPR + 3D volume rendering (VR)** — tri-planar + crosshairs + VR presets (CT-Bone, MIP, …)                                                                 |
 | ✅     | **Measurement export** — JSON + CSV                                                                                                                         |
-| ⬜     | **DICOM-SR export** — measurement SR generation + STOW-RS — _Tier 2_                                                                                        |
-| ⬜     | **DICOM-SEG** display — _Tier 2_                                                                                                                            |
+| ✅     | **STOW-RS upload** — `storeInstances` (multipart/related)                                                                                                   |
+| ⬜     | **DICOM-SR export** — measurement SR generation — _Tier 2_                                                                                                  |
+| 🟡     | **DICOM-SEG** — read-only segment/labelmap parsing; WebGL render needs QA — _Tier 2_                                                                        |
 | ✅     | **Hanging protocols** — `single` / `grid` built-ins + custom; `hanging-protocol` prop                                                                       |
-| ⬜     | **More data sources** — STOW-RS upload, DIMSE, cloud — _Tier 2_                                                                                             |
-| ⬜     | **Study list / worklist** — _Tier 2_                                                                                                                        |
+| 🟡     | **More data sources** — STOW-RS + DICOM-JSON shipped; DIMSE/cloud need a bridge — _Tier 2_                                                                  |
+| 🟡     | **Study list / worklist** — QIDO-RS `searchStudies` (UI follow-up) — _Tier 2_                                                                               |
 | ✅     | **Plugin SDK** — `registerPlugin` (tools / presets / data sources) + data-source factory registry                                                           |
 | ⬜     | **AI assist** — `orbidicom ai` — _Tier 3_                                                                                                                   |
 
@@ -73,7 +74,7 @@ Switch language at runtime (or drop in the `<LangSwitcher>` component):
 
 ```ts
 import { setLang } from "@orbidicom/vue";
-setLang("ja"); // en · tr · de · es · fr · it · pt · ru · zh · ja · ko · hi · id · nl · pl
+setLang("ja"); // en·tr·de·es·fr·it·pt·ru·zh·ja·ko·hi·id·nl·pl·ar·fa·bn·vi·uk (ar/fa are RTL)
 ```
 
 Open multiple series at once with a hanging protocol (`single` — default — or `grid`, or a
@@ -89,8 +90,9 @@ Implement your own backend by satisfying the `DataSource` contract in `@orbidico
 ## Supported languages
 
 English, Türkçe, Deutsch, Español, Français, Italiano, Português, Русский, 中文, 日本語,
-한국어, हिन्दी, Bahasa Indonesia, Nederlands, Polski — with a built-in **searchable** live
-switcher. Adding one is a small string table; see the
+한국어, हिन्दी, Bahasa Indonesia, Nederlands, Polski, العربية, فارسی, বাংলা, Tiếng Việt,
+Українська — with a built-in **searchable** live switcher; the right-to-left languages
+(Arabic, Persian) mirror the layout via a `dir` attribute. Adding one is a small string table; see the
 [add-a-locale guide](https://github.com/docorbitapp/orbidicom/tree/main/.claude/skills/add-a-locale).
 Missing keys fall back to English.
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { defineComponent, h, nextTick } from "vue";
 import { mount } from "@vue/test-utils";
-import { t, setLang, getLang, LOCALES, STRINGS, localeName } from "../src/i18n";
+import { t, setLang, getLang, LOCALES, STRINGS, localeName, isRtl, dir } from "../src/i18n";
 
 describe("i18n", () => {
   beforeEach(() => setLang("en"));
@@ -17,7 +17,7 @@ describe("i18n", () => {
     }
   });
 
-  it("ships the fifteen built-in locales", () => {
+  it("ships the twenty built-in locales", () => {
     expect(LOCALES.map((l) => l.code)).toEqual([
       "en",
       "tr",
@@ -34,6 +34,11 @@ describe("i18n", () => {
       "id",
       "nl",
       "pl",
+      "ar",
+      "fa",
+      "bn",
+      "vi",
+      "uk",
     ]);
   });
 
@@ -50,11 +55,31 @@ describe("i18n", () => {
       id: "Memuat…",
       nl: "Laden…",
       pl: "Ładowanie…",
+      ar: "جارٍ التحميل…",
+      fa: "در حال بارگذاری…",
+      bn: "লোড হচ্ছে…",
+      vi: "Đang tải…",
+      uk: "Завантаження…",
     };
     for (const [code, expected] of Object.entries(samples)) {
       setLang(code);
       expect(t("loading")).toBe(expected);
     }
+  });
+
+  it("flags right-to-left languages (Arabic, Persian) and resolves a dir attribute value", () => {
+    expect(isRtl("ar")).toBe(true);
+    expect(isRtl("fa")).toBe(true);
+    expect(isRtl("en")).toBe(false);
+    expect(isRtl("uk")).toBe(false);
+    expect(dir("ar")).toBe("rtl");
+    expect(dir("en")).toBe("ltr");
+    // Without an explicit code, dir() follows the active language.
+    setLang("ar");
+    expect(dir()).toBe("rtl");
+    expect(isRtl()).toBe(true);
+    setLang("en");
+    expect(dir()).toBe("ltr");
   });
 
   it("returns strings for the active language", () => {

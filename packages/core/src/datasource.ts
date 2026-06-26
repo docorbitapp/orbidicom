@@ -27,6 +27,67 @@ export interface DataSourceCapabilities {
   /** Which report documents this source can surface/render. */
   reports?: { pdf?: boolean; sr?: boolean };
   multiStudy?: boolean;
+  /** Source can search a worklist of studies (e.g. QIDO-RS) via {@link DataSource.searchStudies}. */
+  studySearch?: boolean;
+  /** Source can upload instances (e.g. STOW-RS) via {@link DataSource.storeInstances}. */
+  store?: boolean;
+  /** Source can surface DICOM-SEG segmentations via {@link DataSource.listSegmentations}. */
+  segmentations?: boolean;
+}
+
+/** A study returned by a worklist search ({@link DataSource.searchStudies}). */
+export interface StudySummary {
+  studyInstanceUID: string;
+  /** Patient name, already reduced to its Alphabetic component group. */
+  patientName?: string;
+  patientId?: string;
+  /** Study date as a raw DICOM DA string (e.g. "20240115"). */
+  studyDate?: string;
+  /** Study time as a raw DICOM TM string. */
+  studyTime?: string;
+  studyDescription?: string;
+  accessionNumber?: string;
+  modalitiesInStudy?: string[];
+  numberOfSeries?: number;
+  numberOfInstances?: number;
+}
+
+/**
+ * Worklist filter. Each field maps to a QIDO-RS matching key; omitted fields are
+ * not sent. Backends that cannot filter server-side may apply these client-side.
+ */
+export interface StudyQuery {
+  patientName?: string;
+  patientId?: string;
+  accessionNumber?: string;
+  /** A DICOM DA value or range, e.g. "20240115" or "20240101-20240131". */
+  studyDate?: string;
+  studyDescription?: string;
+  /** Matches ModalitiesInStudy. */
+  modality?: string;
+  /** Cap the number of returned studies. */
+  limit?: number;
+  /** Skip this many studies (paging). */
+  offset?: number;
+}
+
+/** Outcome of a {@link DataSource.storeInstances} upload (STOW-RS shape). */
+export interface StoreResult {
+  /** SOP Instance UIDs the server accepted (ReferencedSOPSequence). */
+  stored: string[];
+  /** Instances the server rejected (FailedSOPSequence), with a reason code if given. */
+  failed: { sopUid?: string; reason?: string }[];
+}
+
+/** A DICOM-SEG segmentation instance discovered in a series. */
+export interface SegmentationInstance {
+  sopUid: string;
+  /** Series Content/Description label, if present. */
+  label?: string;
+  /** Number of segments defined in the SEG. */
+  segmentCount: number;
+  /** Series Instance UID the segmentation is drawn over, if referenced. */
+  referencedSeriesUid?: string;
 }
 
 /** An encapsulated-PDF instance found in a series (rendered, not stacked). */
@@ -53,6 +114,18 @@ export interface DataSource {
   getImageIds(series: SeriesSummary): Promise<string[]>;
   getMetadata?(imageId: string): Promise<InstanceMetadata>;
   downloadArchive?(studyUid: string): Promise<Blob | void>;
+  /** Search the worklist for studies (advertise via `capabilities.studySearch`). */
+  searchStudies?(query?: StudyQuery): Promise<StudySummary[]>;
+  /**
+   * Upload DICOM Part-10 instances (advertise via `capabilities.store`). Pass each
+   * instance's raw bytes; `studyUid` targets a specific study endpoint if given.
+   */
+  storeInstances?(
+    files: (ArrayBuffer | Uint8Array)[],
+    opts?: { studyUid?: string },
+  ): Promise<StoreResult>;
+  /** DICOM-SEG segmentations found in a series during {@link getImageIds}. */
+  listSegmentations?(series: SeriesSummary): SegmentationInstance[];
   /** @deprecated use {@link listReports} — kept so existing callers compile. */
   listPdfs?(series: SeriesSummary): PdfInstance[];
   /** Fetch an encapsulated PDF's bytes and return an object URL (application/pdf). */

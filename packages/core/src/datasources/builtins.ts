@@ -7,6 +7,7 @@ import { registerDataSource } from "../plugins";
 import { DicomWebDataSource, type DicomWebOptions } from "./dicomweb";
 import { LocalDataSource, type LocalOptions } from "./local";
 import { NiftiDataSource, type NiftiOptions } from "./nifti";
+import { DicomJsonDataSource, type DicomJsonOptions } from "./dicomjson";
 
 let registered = false;
 
@@ -27,6 +28,11 @@ export function registerBuiltinDataSources(): void {
     id: "nifti",
     label: "NIfTI volume",
     create: (c) => new NiftiDataSource((c as NiftiOptions) ?? {}),
+  });
+  registerDataSource({
+    id: "dicomjson",
+    label: "DICOM-JSON document",
+    create: (c) => new DicomJsonDataSource(c as DicomJsonOptions),
   });
 }
 

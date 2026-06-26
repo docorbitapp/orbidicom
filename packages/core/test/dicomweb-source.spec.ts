@@ -236,3 +236,190 @@ describe("DicomWebDataSource structured reports", () => {
     });
   });
 });
+
+describe("DicomWebDataSource study search (QIDO-RS)", () => {
+  const studyClient = {
+    searchForStudies: vi.fn(async () => [
+      {
+        "0020000D": V("1.2.3"),
+        "00100010": { vr: "PN", Value: [{ Alphabetic: "DOE^JANE" }] },
+        "00100020": V("PID-1"),
+        "00080020": V("20240115"),
+        "00081030": V("CHEST CT"),
+        "00080050": V("ACC-9"),
+        "00080061": { Value: ["CT", "SR"] },
+        "00201206": V("3"),
+        "00201208": V("250"),
+      },
+    ]),
+    searchForSeries: vi.fn(async () => []),
+    retrieveSeriesMetadata: vi.fn(async () => []),
+  };
+
+  it("advertises the studySearch capability", () => {
+    const ds = new DicomWebDataSource({ root: "/pacs/dicom-web", client: studyClient as never });
+    expect(ds.capabilities.studySearch).toBe(true);
+  });
+
+  it("maps QIDO-RS study results into StudySummary (PatientName from the Alphabetic component)", async () => {
+    const ds = new DicomWebDataSource({ root: "/pacs/dicom-web", client: studyClient as never });
+    const studies = await ds.searchStudies();
+    expect(studies).toEqual([
+      {
+        studyInstanceUID: "1.2.3",
+        patientName: "DOE^JANE",
+        patientId: "PID-1",
+        studyDate: "20240115",
+        studyDescription: "CHEST CT",
+        accessionNumber: "ACC-9",
+        modalitiesInStudy: ["CT", "SR"],
+        numberOfSeries: 3,
+        numberOfInstances: 250,
+      },
+    ]);
+  });
+
+  it("passes query filters through as QIDO tag params (omitting empty fields)", async () => {
+    const client = {
+      searchForStudies: vi.fn(async () => []),
+      searchForSeries: vi.fn(async () => []),
+      retrieveSeriesMetadata: vi.fn(async () => []),
+    };
+    const ds = new DicomWebDataSource({ root: "/pacs/dicom-web", client: client as never });
+    await ds.searchStudies({ patientId: "PID-1", modality: "CT", limit: 25 });
+    expect(client.searchForStudies).toHaveBeenCalledWith({
+      queryParams: { "00100020": "PID-1", "00080061": "CT", limit: "25" },
+    });
+  });
+
+  it("calls searchForStudies with no params when the query is empty", async () => {
+    const client = {
+      searchForStudies: vi.fn(async () => []),
+      searchForSeries: vi.fn(async () => []),
+      retrieveSeriesMetadata: vi.fn(async () => []),
+    };
+    const ds = new DicomWebDataSource({ root: "/pacs/dicom-web", client: client as never });
+    await ds.searchStudies();
+    expect(client.searchForStudies).toHaveBeenCalledWith(undefined);
+  });
+});
+
+describe("DicomWebDataSource DICOM-SEG", () => {
+  const SEG = "1.2.840.10008.5.1.4.1.1.66.4";
+  const SEQ = (...items: Record<string, unknown>[]) => ({ Value: items });
+  const segClient = {
+    searchForStudies: vi.fn(async () => []),
+    searchForSeries: vi.fn(async () => [
+      { "0020000E": V("SEG1"), "00080060": V("SEG"), "00200011": V("5") },
+    ]),
+    retrieveSeriesMetadata: vi.fn(async () => [
+      {
+        "00080018": V("seg-sop"),
+        "00080016": V(SEG),
+        "0008103E": V("Tumor seg"),
+        "00200013": V("1"),
+        "00280010": V(2),
+        "00280011": V(2),
+        "00280008": V(2),
+        "00081115": SEQ({ "0020000E": V("CT-SERIES") }),
+        "00620002": SEQ(
+          { "00620004": V(1), "00620005": V("Tumor") },
+          { "00620004": V(2), "00620005": V("Edema") },
+        ),
+      },
+    ]),
+  };
+
+  it("advertises the segmentations capability", () => {
+    const ds = new DicomWebDataSource({ root: "/pacs/dicom-web", client: segClient as never });
+    expect(ds.capabilities.segmentations).toBe(true);
+  });
+
+  it("routes a SEG instance out of imageIds and lists it as a segmentation", async () => {
+    const ds = new DicomWebDataSource({ root: "/pacs/dicom-web", client: segClient as never });
+    const series = { seriesInstanceUID: "SEG1", studyInstanceUID: "study-1" };
+    // A SEG carries Rows/PixelData but is not a renderable stack — it must not
+    // leak into the image ids (which would stack the labelmap as grayscale).
+    expect(await ds.getImageIds(series)).toEqual([]);
+    expect(ds.listSegmentations!(series)).toEqual([
+      {
+        sopUid: "seg-sop",
+        label: "Tumor seg",
+        segmentCount: 2,
+        referencedSeriesUid: "CT-SERIES",
+      },
+    ]);
+  });
+});
+
+describe("DicomWebDataSource STOW-RS upload", () => {
+  it("advertises the store capability", () => {
+    const ds = new DicomWebDataSource({ root: "/pacs/dicom-web", client: fakeClient as never });
+    expect(ds.capabilities.store).toBe(true);
+  });
+
+  it("POSTs instances as multipart/related and parses the store response", async () => {
+    let body: BodyInit | undefined;
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit) => {
+      body = init.body!;
+      return {
+        ok: true,
+        json: async () => ({
+          "00081199": { Value: [{ "00081155": V("sop-a") }, { "00081155": V("sop-b") }] },
+          "00081198": { Value: [{ "00081155": V("sop-c"), "00081197": V("272") }] },
+        }),
+      };
+    }) as unknown as typeof fetch;
+    const ds = new DicomWebDataSource({
+      root: "/pacs/dicom-web",
+      client: fakeClient as never,
+      fetchFn,
+    });
+    const dcm = new TextEncoder().encode("DICM-bytes").buffer;
+    const result = await ds.storeInstances([dcm]);
+    expect(result).toEqual({
+      stored: ["sop-a", "sop-b"],
+      failed: [{ sopUid: "sop-c", reason: "272" }],
+    });
+    expect(fetchFn).toHaveBeenCalledWith(
+      "/pacs/dicom-web/studies",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "Content-Type": expect.stringContaining('multipart/related; type="application/dicom"'),
+        }),
+      }),
+    );
+    const text = new TextDecoder().decode(body as Uint8Array);
+    expect(text).toContain("Content-Type: application/dicom");
+    expect(text).toContain("DICM-bytes");
+  });
+
+  it("targets a study-specific URL when a studyUid is given", async () => {
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
+    const ds = new DicomWebDataSource({
+      root: "/pacs/dicom-web",
+      client: fakeClient as never,
+      fetchFn,
+    });
+    await ds.storeInstances([new Uint8Array([1, 2, 3])], { studyUid: "1.2.3" });
+    expect(fetchFn).toHaveBeenCalledWith("/pacs/dicom-web/studies/1.2.3", expect.anything());
+  });
+
+  it("throws on a non-OK STOW response", async () => {
+    const fetchFn = vi.fn(async () => ({
+      ok: false,
+      status: 409,
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
+    const ds = new DicomWebDataSource({
+      root: "/pacs/dicom-web",
+      client: fakeClient as never,
+      fetchFn,
+    });
+    await expect(ds.storeInstances([new Uint8Array([1])])).rejects.toThrow(/409/);
+  });
+});

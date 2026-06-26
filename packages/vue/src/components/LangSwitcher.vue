@@ -40,8 +40,9 @@
       </svg>
     </button>
 
-    <!-- Opens upward: the switcher lives in the bottom dock. -->
-    <div v-if="open" class="lang__pop">
+    <!-- Flips to whichever side has more room: upward in the bottom dock,
+         downward when the trigger sits near the top (e.g. mobile). -->
+    <div v-if="open" class="lang__pop" :class="dropUp ? 'lang__pop--up' : 'lang__pop--down'">
       <input
         ref="searchEl"
         v-model="query"
@@ -103,6 +104,9 @@ const searchEl = ref<HTMLInputElement | null>(null);
 const open = ref(false);
 const query = ref("");
 const active = ref(0);
+// Open upward by default (bottom-dock placement); placeMenu() flips it down when
+// the trigger is near the top of the viewport and the popover wouldn't fit above.
+const dropUp = ref(true);
 
 // Each locale labeled in the active UI language; recomputes when the language
 // changes (localeName reads the active language reactively).
@@ -141,7 +145,19 @@ function toggle() {
   else openMenu();
 }
 
+// Choose the side with more room, so the list is never clipped by the viewport
+// edge (the bug on mobile, where the switcher rides near the top).
+function placeMenu() {
+  const btn = buttonEl.value;
+  if (!btn) return;
+  const rect = btn.getBoundingClientRect();
+  const spaceAbove = rect.top;
+  const spaceBelow = window.innerHeight - rect.bottom;
+  dropUp.value = spaceAbove > spaceBelow;
+}
+
 function openMenu() {
+  placeMenu();
   open.value = true;
   query.value = "";
   active.value = Math.max(
@@ -245,10 +261,9 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", onPointerDown)
   transform: rotate(180deg);
 }
 
-/* Popover floats above the trigger (bottom dock context). */
+/* Popover floats off the trigger; the up/down modifier picks the side. */
 .lang__pop {
   position: absolute;
-  bottom: calc(100% + 6px);
   left: 0;
   z-index: 20;
   display: flex;
@@ -262,10 +277,19 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", onPointerDown)
   border: 1px solid var(--border);
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.32);
 }
+.lang__pop--up {
+  bottom: calc(100% + 6px);
+}
+.lang__pop--down {
+  top: calc(100% + 6px);
+}
 .lang__search {
+  /* border-box so width:100% + padding + border fills the popover exactly,
+     lining the field up with the option rows below (no overhang). */
+  box-sizing: border-box;
   width: 100%;
-  height: 32px;
-  padding: 0 10px;
+  height: 34px;
+  padding: 0 9px;
   margin-bottom: 6px;
   border-radius: var(--r-sm);
   background: var(--bg);

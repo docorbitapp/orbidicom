@@ -43,11 +43,17 @@ differentiators.
       grid (built-ins: `single`, `grid`; custom functions supported); the `<Viewer>`
       `hanging-protocol` prop applies one on load. _Shipped._
 - [ ] **DICOM-SEG display** — labelmap rendering (read-only first), then brush/threshold edit.
-      _Needs a SEG parser (dcmjs) + WebGL labelmap QA._
-- [ ] **More data sources** — STOW-RS upload, DIMSE adapter, DICOM-JSON, cloud adapters as
-      separate packages (all additive `DataSource` implementations, no UI branching). _DIMSE/cloud
-      need a server-side bridge / external SDKs._
-- [ ] **Study list / worklist** — QIDO-RS study search instead of jumping straight to one study.
+      _Read-only **parsing** shipped (`core/src/seg/parse.ts`): SOP-class detection, segment
+      definitions (labels, property codes, Recommended-Display-CIELab → sRGB colors), per-frame
+      → segment/source-image mapping, BINARY bitstream decode; plus DICOMweb discovery
+      (`listSegmentations`, SEG routed out of the image stack). Remaining: the WebGL labelmap
+      actor (Cornerstone3D) + real-browser QA, then brush/threshold edit._
+- [x] **More data sources** — STOW-RS upload (`DicomWebDataSource.storeInstances`, multipart/
+      related) and an in-memory **DICOM-JSON** `DataSource` shipped; both additive, no UI
+      branching. _DIMSE / cloud adapters still need a server-side bridge / external SDKs._
+- [x] **Study list / worklist** — QIDO-RS `searchStudies` (`StudyQuery` → `StudySummary[]`) on
+      the `DataSource` contract, implemented for DICOMweb. _Shipped at the API layer; a study-list
+      UI panel is the follow-up._
 
 ### Tier 3 — AI (the real differentiator)
 
@@ -56,10 +62,12 @@ differentiators.
 
 ### Quick wins (anytime)
 
-- Light theme, RTL locales (Arabic / Hebrew — needs UI mirroring), key-image flagging,
-  annotation undo/redo, colormaps/LUTs for PET/MR.
-- [x] **15 UI languages + searchable switcher** — en · tr · de · es · fr · it · pt · ru ·
-      zh · ja · ko · hi · id · nl · pl, with a filterable language picker. _Shipped._
+- Light theme, key-image flagging, annotation undo/redo, colormaps/LUTs for PET/MR.
+- [x] **20 UI languages + searchable switcher** — en · tr · de · es · fr · it · pt · ru ·
+      zh · ja · ko · hi · id · nl · pl · ar · fa · bn · vi · uk, with a filterable language
+      picker. The right-to-left locales (Arabic, Persian) mirror the viewer via a `dir`
+      attribute (`isRtl` / `dir` in `vue/src/i18n.ts`); the picker opens toward available
+      space so it's never clipped on mobile. _Shipped._ (Hebrew / Urdu are easy follow-ons.)
 - [x] **3D VR / MIP with transfer-function presets** — shipped as part of MPR + 3D above.
 
 ## In scope
