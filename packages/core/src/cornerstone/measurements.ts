@@ -4,11 +4,11 @@
  * `collectMeasurements` / `onMeasurementsChanged` touch Cornerstone; the
  * formatters are pure and testable with a plain array.
  *
- * TODO(sr-export): DICOM-SR (TID-1500) generation is a deliberate follow-up — it
- * needs a Part-10 writer (e.g. dcmjs) and STOW-RS upload, which we don't depend
- * on yet. The `Measurement` shape below is intentionally SR-friendly (frame of
- * reference, image id, world points, coded stats) so a future builder consumes
- * it directly.
+ * DICOM-SR (TID-1500) generation lives in `sr/to-json.ts` (`buildMeasurementSr`),
+ * which consumes the `Measurement` shape below directly — it's intentionally
+ * SR-friendly (frame of reference, image id, world points, coded stats). Encoding
+ * the generated DICOM-JSON SR to Part-10 (e.g. dcmjs) for STOW-RS upload is the
+ * remaining host-side step.
  */
 import { annotation } from "@cornerstonejs/tools";
 import { Enums as csToolsEnums } from "@cornerstonejs/tools";

@@ -83,6 +83,15 @@ export interface SegFrameMap {
   sourceSopInstanceUid?: string;
 }
 
+/** A labelmap (segment number per pixel) for one source image, ready to render. */
+export interface SegLabelmap {
+  sourceSopInstanceUid: string;
+  rows: number;
+  columns: number;
+  /** Row-major segment number per pixel (0 = background); length rows*columns. */
+  data: Uint8Array;
+}
+
 /** True if the metadata describes a Segmentation Storage instance. */
 export function isSegmentation(meta: Json): boolean {
   return first(meta, TAG.SOP_CLASS_UID) === SEG_SOP_CLASS_UID;
@@ -187,4 +196,39 @@ export function unpackBinarySegmentationFrames(
     out.push(mask);
   }
   return out;
+}
+
+/**
+ * Assemble decoded per-frame masks into one {@link SegLabelmap} per source image:
+ * for each frame, paint its segment number onto the source image's labelmap where
+ * the mask is set (later frames win on overlap). Frames with no source image are
+ * skipped. This is the render-ready data a Cornerstone3D labelmap consumes.
+ */
+export function buildSegLabelmaps(
+  dims: { rows: number; columns: number },
+  masks: Uint8Array[],
+  frameMap: SegFrameMap[],
+): SegLabelmap[] {
+  const { rows, columns } = dims;
+  const perFrame = rows * columns;
+  const bySop = new Map<string, Uint8Array>();
+  frameMap.forEach((fm, i) => {
+    const sop = fm.sourceSopInstanceUid;
+    const mask = masks[i];
+    if (!sop || !mask) return;
+    let lm = bySop.get(sop);
+    if (!lm) {
+      lm = new Uint8Array(perFrame);
+      bySop.set(sop, lm);
+    }
+    for (let p = 0; p < perFrame; p++) {
+      if (mask[p]) lm[p] = fm.segmentNumber;
+    }
+  });
+  return [...bySop.entries()].map(([sourceSopInstanceUid, data]) => ({
+    sourceSopInstanceUid,
+    rows,
+    columns,
+    data,
+  }));
 }
