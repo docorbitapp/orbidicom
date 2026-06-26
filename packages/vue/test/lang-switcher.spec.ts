@@ -19,6 +19,11 @@ const ALL = [
   "id",
   "nl",
   "pl",
+  "ar",
+  "fa",
+  "bn",
+  "vi",
+  "uk",
 ];
 
 const codesOf = (w: ReturnType<typeof mount>) =>
@@ -71,6 +76,40 @@ describe("LangSwitcher", () => {
     await w.find(".lang__search").setValue("deutsch");
     await w.find(".lang__search").trigger("keydown", { key: "Enter" });
     expect(getLang()).toBe("de");
+  });
+
+  const rectAt = (top: number, height = 36) =>
+    () =>
+      ({
+        top,
+        bottom: top + height,
+        height,
+        left: 0,
+        right: 0,
+        width: 0,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+  it("opens downward when the trigger sits near the top of the viewport (mobile)", async () => {
+    Object.defineProperty(window, "innerHeight", { value: 800, configurable: true });
+    const w = mount(LangSwitcher);
+    (w.find(".lang__button").element as HTMLElement).getBoundingClientRect = rectAt(12);
+    await w.find(".lang__button").trigger("click");
+    const pop = w.find(".lang__pop");
+    expect(pop.classes()).toContain("lang__pop--down");
+    expect(pop.classes()).not.toContain("lang__pop--up");
+  });
+
+  it("opens upward when the trigger sits near the bottom dock of the viewport", async () => {
+    Object.defineProperty(window, "innerHeight", { value: 800, configurable: true });
+    const w = mount(LangSwitcher);
+    (w.find(".lang__button").element as HTMLElement).getBoundingClientRect = rectAt(760);
+    await w.find(".lang__button").trigger("click");
+    const pop = w.find(".lang__pop");
+    expect(pop.classes()).toContain("lang__pop--up");
+    expect(pop.classes()).not.toContain("lang__pop--down");
   });
 
   it("labels each language in the active UI language, keeping the endonym as a hint", async () => {

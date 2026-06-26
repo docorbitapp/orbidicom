@@ -7,11 +7,16 @@ import type {
   PdfInstance,
   ReportInstance,
   SrTree,
+  StudySummary,
+  StudyQuery,
+  StoreResult,
+  SegmentationInstance,
 } from "../datasource";
 import type { AuthStrategy } from "../auth";
 import { authHeaders } from "../auth";
 import { buildWadoRsImageId } from "../imageIds";
 import { srTreeFromJson } from "../sr/from-json";
+import { isSegmentation, parseSeg } from "../seg/parse";
 
 const TAG = {
   SERIES_UID: "0020000E",
@@ -26,6 +31,24 @@ const TAG = {
   ROWS: "00280010",
   ENCAPSULATED_DOCUMENT: "00420011",
   CONTENT_SEQUENCE: "0040A730", // SR document root content
+  CONTENT_LABEL: "00700080",
+  CONTENT_DESCRIPTION: "00700081",
+  // Study-level QIDO-RS query/return tags.
+  STUDY_UID: "0020000D",
+  PATIENT_NAME: "00100010",
+  PATIENT_ID: "00100020",
+  STUDY_DATE: "00080020",
+  STUDY_TIME: "00080030",
+  STUDY_DESCRIPTION: "00081030",
+  ACCESSION_NUMBER: "00080050",
+  MODALITIES_IN_STUDY: "00080061",
+  NUM_STUDY_SERIES: "00201206",
+  NUM_STUDY_INSTANCES: "00201208",
+  // STOW-RS response sequences.
+  REF_SOP_SEQUENCE: "00081199",
+  FAILED_SOP_SEQUENCE: "00081198",
+  REF_SOP_INSTANCE_UID: "00081155",
+  FAILURE_REASON: "00081197",
 } as const;
 
 // Encapsulated PDF Storage SOP Class UID.
@@ -39,6 +62,9 @@ const NON_RENDERABLE_MODALITIES = new Set(["PR", "KO", "PLAN"]);
 
 /** The subset of dicomweb-client we use — lets tests inject a fake. */
 export interface DICOMwebClientLike {
+  searchForStudies(opts?: {
+    queryParams?: Record<string, string>;
+  }): Promise<Record<string, unknown>[]>;
   searchForSeries(opts: { studyInstanceUID: string }): Promise<Record<string, unknown>[]>;
   retrieveSeriesMetadata(opts: {
     studyInstanceUID: string;
@@ -51,6 +77,21 @@ function first(obj: Record<string, unknown>, tag: string): string {
   return String(entry?.Value?.[0] ?? "");
 }
 const num = (obj: Record<string, unknown>, tag: string) => Number(first(obj, tag)) || 0;
+
+/** Read a multi-valued string tag (e.g. ModalitiesInStudy), or undefined if empty. */
+function multi(obj: Record<string, unknown>, tag: string): string[] | undefined {
+  const vals = (obj?.[tag] as { Value?: unknown[] } | undefined)?.Value;
+  return vals && vals.length ? vals.map(String) : undefined;
+}
+
+/** Read a Person Name tag, reducing it to its Alphabetic component group. */
+function personName(obj: Record<string, unknown>, tag: string): string {
+  const v = (obj?.[tag] as { Value?: unknown[] } | undefined)?.Value?.[0];
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "object") return String((v as { Alphabetic?: string }).Alphabetic ?? "");
+  return String(v);
+}
 
 export interface DicomWebOptions {
   /** DICOMweb base URL, e.g. "/pacs/dicom-web" or "https://host/dicom-web". */
@@ -73,6 +114,9 @@ export class DicomWebDataSource implements DataSource {
     encapsulatedPdf: true,
     reports: { pdf: true, sr: true },
     multiStudy: true,
+    studySearch: true,
+    store: true,
+    segmentations: true,
   };
   private root: string;
   private client: DICOMwebClientLike;
@@ -83,6 +127,7 @@ export class DicomWebDataSource implements DataSource {
     string,
     { sopUid: string; instanceNumber: number; modality: string; meta: Record<string, unknown> }[]
   >();
+  private segsBySeries = new Map<string, SegmentationInstance[]>();
   private fetchFn: typeof fetch;
   private headers: Record<string, string>;
   // Cookie auth rides on credentials; otherwise stay same-origin.
@@ -104,6 +149,64 @@ export class DicomWebDataSource implements DataSource {
         // dicomweb-client types omit some options; cast to pass them through.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any) as unknown as DICOMwebClientLike);
+  }
+
+  /**
+   * Search the PACS worklist via QIDO-RS (`/studies`). Each {@link StudyQuery}
+   * field is sent as a matching key; an empty query lists studies (server-capped).
+   */
+  async searchStudies(query: StudyQuery = {}): Promise<StudySummary[]> {
+    const queryParams: Record<string, string> = {};
+    if (query.patientName) queryParams[TAG.PATIENT_NAME] = query.patientName;
+    if (query.patientId) queryParams[TAG.PATIENT_ID] = query.patientId;
+    if (query.accessionNumber) queryParams[TAG.ACCESSION_NUMBER] = query.accessionNumber;
+    if (query.studyDate) queryParams[TAG.STUDY_DATE] = query.studyDate;
+    if (query.studyDescription) queryParams[TAG.STUDY_DESCRIPTION] = query.studyDescription;
+    if (query.modality) queryParams[TAG.MODALITIES_IN_STUDY] = query.modality;
+    if (query.limit != null) queryParams.limit = String(query.limit);
+    if (query.offset != null) queryParams.offset = String(query.offset);
+    const opts = Object.keys(queryParams).length ? { queryParams } : undefined;
+    const list = await this.client.searchForStudies(opts);
+    return list.map((s) => ({
+      studyInstanceUID: first(s, TAG.STUDY_UID),
+      patientName: personName(s, TAG.PATIENT_NAME) || undefined,
+      patientId: first(s, TAG.PATIENT_ID) || undefined,
+      studyDate: first(s, TAG.STUDY_DATE) || undefined,
+      studyTime: first(s, TAG.STUDY_TIME) || undefined,
+      studyDescription: first(s, TAG.STUDY_DESCRIPTION) || undefined,
+      accessionNumber: first(s, TAG.ACCESSION_NUMBER) || undefined,
+      modalitiesInStudy: multi(s, TAG.MODALITIES_IN_STUDY),
+      numberOfSeries: num(s, TAG.NUM_STUDY_SERIES) || undefined,
+      numberOfInstances: num(s, TAG.NUM_STUDY_INSTANCES) || undefined,
+    }));
+  }
+
+  /**
+   * Upload Part-10 instances via STOW-RS — POSTs them as a single
+   * `multipart/related; type="application/dicom"` body to `/studies` (or
+   * `/studies/{uid}`), then parses the Store-Instances response into a
+   * {@link StoreResult}.
+   */
+  async storeInstances(
+    files: (ArrayBuffer | Uint8Array)[],
+    opts: { studyUid?: string } = {},
+  ): Promise<StoreResult> {
+    const url = opts.studyUid ? `${this.root}/studies/${opts.studyUid}` : `${this.root}/studies`;
+    const body = buildMultipartRelated(files, STOW_BOUNDARY, "application/dicom");
+    const res = await this.fetchFn(url, {
+      method: "POST",
+      credentials: this.credentials,
+      headers: {
+        "Content-Type": `multipart/related; type="application/dicom"; boundary=${STOW_BOUNDARY}`,
+        Accept: "application/dicom+json",
+        ...this.headers,
+      },
+      // A Uint8Array is a valid BufferSource body; cast past the typed-array generic.
+      body: body as unknown as BodyInit,
+    });
+    if (!res.ok) throw new Error(`STOW-RS upload failed: ${res.status}`);
+    const json = await res.json().catch(() => null);
+    return parseStowResponse(json);
   }
 
   async getSeries(studyUids: string[]): Promise<SeriesSummary[]> {
@@ -143,6 +246,7 @@ export class DicomWebDataSource implements DataSource {
 
     const imageIds: string[] = [];
     const pdfs: PdfInstance[] = [];
+    const segs: SegmentationInstance[] = [];
     const srs: {
       sopUid: string;
       instanceNumber: number;
@@ -155,6 +259,22 @@ export class DicomWebDataSource implements DataSource {
       if (first(meta, TAG.SOP_CLASS_UID) === ENCAPSULATED_PDF_SOP) {
         const enc = meta[TAG.ENCAPSULATED_DOCUMENT] as { BulkDataURI?: string } | undefined;
         pdfs.push({ sopUid, bulkDataUri: enc?.BulkDataURI ?? null });
+        continue;
+      }
+      // A Segmentation: it carries Rows/PixelData (a labelmap), so without this it
+      // would be stacked as a grayscale image. Route it to listSegmentations instead.
+      if (isSegmentation(meta)) {
+        const info = parseSeg(meta);
+        const label =
+          first(meta, TAG.SERIES_DESCRIPTION) ||
+          first(meta, TAG.CONTENT_DESCRIPTION) ||
+          first(meta, TAG.CONTENT_LABEL);
+        segs.push({
+          sopUid,
+          label: label || undefined,
+          segmentCount: info.segments.length,
+          referencedSeriesUid: info.referencedSeriesUid,
+        });
         continue;
       }
       // A Structured Report: its Content Sequence is already inline in this
@@ -183,7 +303,13 @@ export class DicomWebDataSource implements DataSource {
     }
     this.pdfsBySeries.set(seriesUid, pdfs);
     this.srBySeries.set(seriesUid, srs);
+    this.segsBySeries.set(seriesUid, segs);
     return imageIds;
+  }
+
+  /** DICOM-SEG segmentations found during the last {@link getImageIds} for this series. */
+  listSegmentations(series: SeriesSummary): SegmentationInstance[] {
+    return this.segsBySeries.get(series.seriesInstanceUID) ?? [];
   }
 
   /** Encapsulated PDFs found during the last {@link getImageIds} for this series. */
@@ -261,6 +387,49 @@ export class DicomWebDataSource implements DataSource {
     const payload = extractBulkPayload(buf, res.headers.get("Content-Type") ?? "");
     return URL.createObjectURL(new Blob([payload], { type: "application/pdf" }));
   }
+}
+
+// A fixed multipart boundary for STOW-RS bodies. DICOM instances are binary, so a
+// collision with this ASCII token is vanishingly unlikely.
+const STOW_BOUNDARY = "orbidicomStowBoundary";
+
+/** Assemble parts into a single `multipart/related` body of the given content type. */
+function buildMultipartRelated(
+  parts: (ArrayBuffer | Uint8Array)[],
+  boundary: string,
+  type: string,
+): Uint8Array {
+  const enc = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+  for (const p of parts) {
+    chunks.push(enc.encode(`--${boundary}\r\nContent-Type: ${type}\r\n\r\n`));
+    chunks.push(p instanceof Uint8Array ? p : new Uint8Array(p));
+    chunks.push(enc.encode("\r\n"));
+  }
+  chunks.push(enc.encode(`--${boundary}--\r\n`));
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) {
+    out.set(c, off);
+    off += c.length;
+  }
+  return out;
+}
+
+/** Parse a STOW-RS Store-Instances response dataset into a {@link StoreResult}. */
+function parseStowResponse(json: unknown): StoreResult {
+  const ds = (Array.isArray(json) ? json[0] : json) as Record<string, unknown> | null;
+  const seq = (tag: string) =>
+    ((ds?.[tag] as { Value?: Record<string, unknown>[] } | undefined)?.Value ?? []);
+  const stored = seq(TAG.REF_SOP_SEQUENCE)
+    .map((it) => first(it, TAG.REF_SOP_INSTANCE_UID))
+    .filter(Boolean);
+  const failed = seq(TAG.FAILED_SOP_SEQUENCE).map((it) => ({
+    sopUid: first(it, TAG.REF_SOP_INSTANCE_UID) || undefined,
+    reason: first(it, TAG.FAILURE_REASON) || undefined,
+  }));
+  return { stored, failed };
 }
 
 /** Re-base a (possibly absolute / internal) BulkDataURI onto our same-origin root. */

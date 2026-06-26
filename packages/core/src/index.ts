@@ -14,6 +14,8 @@ export * from "./cornerstone/measurements";
 export * from "./datasources/dicomweb";
 export * from "./datasources/local";
 export * from "./datasources/nifti";
+export * from "./datasources/dicomjson";
+export * from "./seg/parse";
 // Side-effect import: registers the built-in adapters into the data-source
 // factory registry (keep last so the source modules above are initialized).
 import "./datasources/builtins";

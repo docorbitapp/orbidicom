@@ -1,5 +1,5 @@
 <template>
-  <div class="viewer orbidicom">
+  <div class="viewer orbidicom" :dir="layoutDir">
     <Toolbar
       :modality="activeModality"
       :active-tool="activeTool"
@@ -220,7 +220,11 @@ import type {
   HangingProtocol,
   HangingProtocolName,
 } from "@orbidicom/core";
-import { t } from "../i18n";
+import { t, dir, getLang } from "../i18n";
+
+// Mirrors the whole viewer for right-to-left UI languages (Arabic, Persian, …).
+// Reactive: reading getLang() tracks setLang(), so switching language flips dir.
+const layoutDir = computed(() => dir(getLang()));
 
 // Selectable viewport layouts (cell count -> CSS class on the grid). MAX_CELLS
 // is the largest layout; every per-cell array is sized to it and the extra
