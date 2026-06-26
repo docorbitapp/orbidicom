@@ -396,7 +396,10 @@ describe("DicomWebDataSource STOW-RS upload", () => {
   });
 
   it("targets a study-specific URL when a studyUid is given", async () => {
-    const fetchFn = vi.fn(async () => ({ ok: true, json: async () => ({}) })) as unknown as typeof fetch;
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
     const ds = new DicomWebDataSource({
       root: "/pacs/dicom-web",
       client: fakeClient as never,

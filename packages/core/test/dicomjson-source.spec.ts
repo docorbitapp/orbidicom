@@ -96,9 +96,9 @@ describe("DicomJsonDataSource", () => {
 
   it("yields no imageIds without a root (metadata-only mode)", async () => {
     const ds = new DicomJsonDataSource({ metadata: META });
-    expect(
-      await ds.getImageIds({ seriesInstanceUID: "S1", studyInstanceUID: "study-1" }),
-    ).toEqual([]);
+    expect(await ds.getImageIds({ seriesInstanceUID: "S1", studyInstanceUID: "study-1" })).toEqual(
+      [],
+    );
   });
 
   it("exposes per-image metadata via getMetadata", async () => {

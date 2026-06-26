@@ -421,7 +421,7 @@ function buildMultipartRelated(
 function parseStowResponse(json: unknown): StoreResult {
   const ds = (Array.isArray(json) ? json[0] : json) as Record<string, unknown> | null;
   const seq = (tag: string) =>
-    ((ds?.[tag] as { Value?: Record<string, unknown>[] } | undefined)?.Value ?? []);
+    (ds?.[tag] as { Value?: Record<string, unknown>[] } | undefined)?.Value ?? [];
   const stored = seq(TAG.REF_SOP_SEQUENCE)
     .map((it) => first(it, TAG.REF_SOP_INSTANCE_UID))
     .filter(Boolean);

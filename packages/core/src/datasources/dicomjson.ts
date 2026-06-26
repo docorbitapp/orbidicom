@@ -60,10 +60,7 @@ export class DicomJsonDataSource implements DataSource {
 
   async getSeries(studyUids: string[]): Promise<SeriesSummary[]> {
     const want = new Set(studyUids);
-    const bySeries = new Map<
-      string,
-      { summary: SeriesSummary; number: number; count: number }
-    >();
+    const bySeries = new Map<string, { summary: SeriesSummary; number: number; count: number }>();
     for (const inst of this.instances) {
       const studyUid = first(inst, TAG.STUDY_UID);
       if (want.size && !want.has(studyUid)) continue; // empty query → every study
@@ -99,9 +96,7 @@ export class DicomJsonDataSource implements DataSource {
       throw new Error("DicomJsonDataSource.getImageIds requires series.studyInstanceUID");
     const seriesUid = series.seriesInstanceUID;
     const insts = this.instances
-      .filter(
-        (m) => first(m, TAG.SERIES_UID) === seriesUid && first(m, TAG.STUDY_UID) === studyUid,
-      )
+      .filter((m) => first(m, TAG.SERIES_UID) === seriesUid && first(m, TAG.STUDY_UID) === studyUid)
       .sort((a, b) => num(a, TAG.INSTANCE_NUMBER) - num(b, TAG.INSTANCE_NUMBER));
 
     const imageIds: string[] = [];

@@ -78,7 +78,8 @@ describe("LangSwitcher", () => {
     expect(getLang()).toBe("de");
   });
 
-  const rectAt = (top: number, height = 36) =>
+  const rectAt =
+    (top: number, height = 36) =>
     () =>
       ({
         top,

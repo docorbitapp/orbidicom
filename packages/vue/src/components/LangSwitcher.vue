@@ -42,11 +42,7 @@
 
     <!-- Flips to whichever side has more room: upward in the bottom dock,
          downward when the trigger sits near the top (e.g. mobile). -->
-    <div
-      v-if="open"
-      class="lang__pop"
-      :class="dropUp ? 'lang__pop--up' : 'lang__pop--down'"
-    >
+    <div v-if="open" class="lang__pop" :class="dropUp ? 'lang__pop--up' : 'lang__pop--down'">
       <input
         ref="searchEl"
         v-model="query"

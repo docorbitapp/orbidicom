@@ -1248,7 +1248,8 @@ export const STRINGS = {
     language: "زبان",
     menu: "منو",
     newStudy: "بررسی جدید",
-    dropDrag: "یک پوشه بررسی DICOM، یک فایل .zip، یک NIfTI (.nii/.nii.gz) یا فایل‌های .dcm را اینجا بکشید",
+    dropDrag:
+      "یک پوشه بررسی DICOM، یک فایل .zip، یک NIfTI (.nii/.nii.gz) یا فایل‌های .dcm را اینجا بکشید",
     dropSub: "نیازی به سرور نیست — فایل‌ها در مرورگر شما باقی می‌مانند",
     dropReading: "در حال خواندن و رمزگشایی فایل‌ها…",
     dropReadingSub: "بررسی‌های بزرگ ممکن است چند ثانیه طول بکشد",
@@ -1321,7 +1322,8 @@ export const STRINGS = {
     language: "ভাষা",
     menu: "মেনু",
     newStudy: "নতুন স্টাডি",
-    dropDrag: "একটি DICOM স্টাডি ফোল্ডার, একটি .zip, একটি NIfTI (.nii/.nii.gz), অথবা .dcm ফাইল এখানে টেনে আনুন",
+    dropDrag:
+      "একটি DICOM স্টাডি ফোল্ডার, একটি .zip, একটি NIfTI (.nii/.nii.gz), অথবা .dcm ফাইল এখানে টেনে আনুন",
     dropSub: "কোনো সার্ভার লাগবে না — ফাইল আপনার ব্রাউজারেই থাকে",
     dropReading: "ফাইল পড়া ও ডিকোড করা হচ্ছে…",
     dropReadingSub: "বড় স্টাডিতে কয়েক সেকেন্ড লাগতে পারে",
@@ -1394,7 +1396,8 @@ export const STRINGS = {
     language: "Ngôn ngữ",
     menu: "Menu",
     newStudy: "Ca chụp mới",
-    dropDrag: "Kéo thư mục ca chụp DICOM, tệp .zip, tệp NIfTI (.nii/.nii.gz), hoặc các tệp .dcm vào đây",
+    dropDrag:
+      "Kéo thư mục ca chụp DICOM, tệp .zip, tệp NIfTI (.nii/.nii.gz), hoặc các tệp .dcm vào đây",
     dropSub: "không cần máy chủ — tệp luôn nằm trong trình duyệt của bạn",
     dropReading: "Đang đọc & giải mã tệp…",
     dropReadingSub: "các ca chụp lớn có thể mất vài giây",
@@ -1467,7 +1470,8 @@ export const STRINGS = {
     language: "Мова",
     menu: "Меню",
     newStudy: "Нове дослідження",
-    dropDrag: "Перетягніть сюди теку дослідження DICOM, файл .zip, NIfTI (.nii/.nii.gz) або файли .dcm",
+    dropDrag:
+      "Перетягніть сюди теку дослідження DICOM, файл .zip, NIfTI (.nii/.nii.gz) або файли .dcm",
     dropSub: "сервер не потрібен — файли залишаються у вашому браузері",
     dropReading: "Читання й декодування файлів…",
     dropReadingSub: "великі дослідження можуть тривати кілька секунд",
