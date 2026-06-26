@@ -32,6 +32,37 @@ describe("Toolbar", () => {
     expect(withDl.find(".tbtn--download").exists()).toBe(true);
   });
 
+  it("renders the download-image button only when canDownloadImage is true, and emits", async () => {
+    const without = mount(Toolbar, {
+      props: { modality: "CT", activeTool: "WindowLevel", layout: 1 },
+    });
+    expect(without.find(".tbtn--download-image").exists()).toBe(false);
+
+    const w = mount(Toolbar, {
+      props: { modality: "CT", activeTool: "WindowLevel", layout: 1, canDownloadImage: true },
+    });
+    const btn = w.find(".tbtn--download-image");
+    expect(btn.exists()).toBe(true);
+    await btn.trigger("click");
+    expect(w.emitted("downloadImage")).toBeTruthy();
+  });
+
+  it("shows the measurement-export buttons when canExportMeasurements and emits the format", async () => {
+    const without = mount(Toolbar, {
+      props: { modality: "CT", activeTool: "WindowLevel", layout: 1 },
+    });
+    expect(without.find(".tbtn--export-measurements").exists()).toBe(false);
+
+    const w = mount(Toolbar, {
+      props: { modality: "CT", activeTool: "WindowLevel", layout: 1, canExportMeasurements: true },
+    });
+    const buttons = w.find(".tbtn--export-measurements").findAll("button");
+    expect(buttons).toHaveLength(2);
+    await buttons[0].trigger("click");
+    await buttons[1].trigger("click");
+    expect(w.emitted("exportMeasurements")).toEqual([["json"], ["csv"]]);
+  });
+
   it("emits tool when a tool button is clicked", async () => {
     const w = mount(Toolbar, {
       props: { modality: "MR", activeTool: "WindowLevel", layout: 1 },
@@ -61,8 +92,27 @@ describe("Toolbar", () => {
       props: { modality: "MR", activeTool: "WindowLevel", layout: 1 },
     });
     const opts = w.findAll(".layout__select option").map((o) => o.attributes("value"));
-    expect(opts).toEqual(["1", "2", "4", "6", "8", "10"]);
+    expect(opts).toEqual(["1", "2", "4", "6", "8", "10", "mpr"]);
     await w.find(".layout__select").setValue("6");
     expect(w.emitted("setLayout")?.[0]).toEqual([6]);
+  });
+
+  it("always lists the MPR / 3D option but disables it (with a tooltip) when not volume-capable", () => {
+    const off = mount(Toolbar, {
+      props: { modality: "US", activeTool: "WindowLevel", layout: 1, canMpr: false },
+    });
+    const mprOff = off
+      .findAll(".layout__select option")
+      .find((o) => o.attributes("value") === "mpr")!;
+    expect(mprOff.attributes("disabled")).toBeDefined();
+    expect(mprOff.attributes("title")).toBeTruthy(); // explains why it's unavailable
+
+    const on = mount(Toolbar, {
+      props: { modality: "CT", activeTool: "WindowLevel", layout: 1, canMpr: true },
+    });
+    const mprOn = on
+      .findAll(".layout__select option")
+      .find((o) => o.attributes("value") === "mpr")!;
+    expect(mprOn.attributes("disabled")).toBeUndefined();
   });
 });

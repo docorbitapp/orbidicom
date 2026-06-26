@@ -49,19 +49,48 @@ or a reverse proxy that injects auth server-side.
 | `--port <n>`                | Port to serve on (default `4173`)                    |
 | `--open` / `--no-open`      | Open (default) / don't open the browser              |
 
-## What you get
+## Features & roadmap
 
-- Selectable 1–10-up grids, cine playback, W/L presets, length/angle/ROI tools
-- On-image metadata overlay (with a privacy blur mode) and a DICOM metadata reader
-- Encapsulated-PDF and DICOM Structured Report (SR) rendering
-- Live language switching — English, Türkçe, Deutsch, Español
-- Fully offline on local files; connects to Orthanc, dcm4chee, Google Healthcare, or a proxy
+✅ shipped · ⬜ planned. Tiers and detail in [ROADMAP.md](https://github.com/docorbitapp/orbidicom/blob/main/ROADMAP.md).
+
+| Status | Capability                                                                                    |
+| ------ | --------------------------------------------------------------------------------------------- |
+| ✅     | **2D viewing** — window/level, zoom, pan, slice scroll, rotate, flip, invert                  |
+| ✅     | **Cine** playback — per cell, adjustable fps                                                  |
+| ✅     | **Measurement tools** — length, angle, rectangle & ellipse ROI, probe                         |
+| ✅     | **Keyboard shortcuts** — tools, transforms, slice nav, W/L presets (remappable)               |
+| ✅     | **W/L preset engine** — CT built-ins + modality-aware, host-extensible                        |
+| ✅     | **Grid layouts** — 1–10-up, each cell independent                                             |
+| ✅     | **Download slice as JPEG** — image + measurements (no patient text)                           |
+| ✅     | **Reports** — encapsulated PDF + DICOM Structured Report (SR)                                 |
+| ✅     | **Metadata** — on-image overlay with privacy blur + full DICOM tag reader                     |
+| ✅     | **Data sources** — DICOMweb (Orthanc, dcm4chee, Google Healthcare, proxy), local files, NIfTI |
+| ✅     | **Auth** — none / basic / bearer / cookie                                                     |
+| ✅     | **Study ZIP download** (DICOMweb)                                                             |
+| ✅     | **15 UI languages** + searchable switcher + theming                                           |
+| ✅     | **Runs anywhere** — offline, `npx orbidicom`, Kubernetes/Helm                                 |
+| ✅     | **MPR + 3D volume rendering (VR)** — tri-planar + crosshairs + VR presets                     |
+| ✅     | **Measurement export** — JSON + CSV                                                           |
+| ⬜     | **DICOM-SR export** — measurement SR generation + STOW-RS — _Tier 2_                          |
+| ⬜     | **DICOM-SEG** display — _Tier 2_                                                              |
+| ⬜     | **Hanging protocols** — _Tier 2_                                                              |
+| ⬜     | **More data sources** — STOW-RS upload, DIMSE, cloud — _Tier 2_                               |
+| ⬜     | **Study list / worklist** — _Tier 2_                                                          |
+| ⬜     | **Plugin SDK** — _Tier 2_                                                                     |
+| ⬜     | **AI assist** — `orbidicom ai` — _Tier 3_                                                     |
 
 ## Embed or deploy
 
 - **In your own app:** `npm i @orbidicom/vue @orbidicom/core vue` and render `<Viewer>`.
 - **Kubernetes:** a container image and a Helm chart ship with the project (same-origin
   DICOMweb proxy, ingress/TLS, autoscaling, non-root hardening).
+
+## Supported languages
+
+The viewer ships with **15 languages** and a built-in **searchable** live switcher: English,
+Türkçe, Deutsch, Español, Français, Italiano, Português, Русский, 中文, 日本語, 한국어, हिन्दी,
+Bahasa Indonesia, Nederlands, Polski. Adding more is a small string table — see the
+[add-a-locale guide](https://github.com/docorbitapp/orbidicom/tree/main/.claude/skills/add-a-locale).
 
 Project, docs, and source: <https://github.com/docorbitapp/orbidicom>
 

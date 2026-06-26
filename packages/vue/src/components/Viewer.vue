@@ -8,18 +8,24 @@
       :menu-open="menuOpen"
       :title="title"
       :can-download="canDownload"
+      :can-download-image="canDownloadImage"
+      :can-export-measurements="canExportMeasurements"
+      :can-mpr="canMpr"
+      :mpr-active="layoutMode === 'mpr'"
       @preset="applyPreset"
       @tool="selectTool"
       @invert="onActive((s) => s.invert())"
       @rotate="onActive((s) => s.rotate())"
       @flip-h="onActive((s) => s.flipH())"
-      @reset="onActive((s) => s.reset())"
+      @reset="onReset"
       @clear-annotations="confirmClearOpen = true"
       @set-layout="setLayout"
       @cycle-overlay="cycleOverlay"
       @open-meta="openMeta"
       @toggle-menu="menuOpen = !menuOpen"
       @download-study="onDownloadStudy"
+      @download-image="onDownloadImage"
+      @export-measurements="onExportMeasurements"
     />
 
     <div class="content">
@@ -49,7 +55,9 @@
           </div>
         </Transition>
 
-        <div class="grid" :class="gridClass">
+        <!-- The grid stays mounted in MPR mode (display:none) so its viewports'
+             rendering engines keep their DOM elements — switching back is instant. -->
+        <div class="grid" :class="[gridClass, { 'grid--hidden': layoutMode === 'mpr' }]">
           <div
             v-for="i in MAX_CELLS"
             :key="i"
@@ -93,7 +101,32 @@
           </div>
         </div>
 
-        <div v-if="sliceCount[activeCell] > 1" class="slicebar">
+        <!-- MPR / 3D: three linked orthographic planes + a volume-rendering pane,
+             all built from the active series (OHIF-style 2×2 hanging protocol). -->
+        <div v-if="layoutMode === 'mpr'" class="mpr">
+          <div :ref="(el) => (mprEls.axial.value = el as HTMLDivElement)" class="mpr__pane" />
+          <div :ref="(el) => (mprEls.coronal.value = el as HTMLDivElement)" class="mpr__pane" />
+          <div :ref="(el) => (mprEls.sagittal.value = el as HTMLDivElement)" class="mpr__pane" />
+          <div class="mpr__pane mpr__pane--vr">
+            <div :ref="(el) => (mprEls.volume3d.value = el as HTMLDivElement)" class="mpr__vr" />
+            <label class="mpr__preset" :title="t('vrPreset')">
+              <span class="mpr__preset-label">{{ t("vrPreset") }}</span>
+              <select
+                :value="vrPreset"
+                :disabled="!mprReady"
+                @change="onVrPreset(($event.target as HTMLSelectElement).value)"
+              >
+                <option v-for="name in VR_PRESETS" :key="name" :value="name">{{ name }}</option>
+              </select>
+            </label>
+          </div>
+          <div v-if="!mprReady" class="loading">
+            <span class="spinner" />
+            <span class="loading__text">{{ t("mprBuilding") }}</span>
+          </div>
+        </div>
+
+        <div v-if="layoutMode === 'grid' && sliceCount[activeCell] > 1" class="slicebar">
           <button
             class="slicebar__play"
             :class="{ 'is-playing': cinePlaying[activeCell] }"
@@ -146,7 +179,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from "vue";
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted } from "vue";
 import Toolbar from "./Toolbar.vue";
 import SeriesRail from "./SeriesRail.vue";
 import Controls from "./Controls.vue";
@@ -161,6 +194,17 @@ import {
   createStack,
   readImageMetadata,
   readMetadataGroups,
+  resolveHotkey,
+  DEFAULT_KEYMAP,
+  windowPresetsFor,
+  collectMeasurements,
+  measurementsToJson,
+  measurementsToCsv,
+  onMeasurementsChanged,
+  createMprView,
+  isVolumeCapable,
+  VR_PRESETS,
+  defaultVrPreset,
 } from "@orbidicom/core";
 import type {
   StackHandle,
@@ -170,6 +214,8 @@ import type {
   ImageMetadata,
   MetaGroup,
   SrTree,
+  Keymap,
+  MprHandle,
 } from "@orbidicom/core";
 import { t } from "../i18n";
 
@@ -182,10 +228,31 @@ const CINE_FPS = 10; // default playback speed
 const CINE_SPEEDS = [5, 10, 15, 20, 30]; // fps options in the bottom cine bar
 const LOAD_TIMEOUT_MS = 45_000;
 
-const props = defineProps<{ source: DataSource; studyUids?: string[]; title?: string }>();
+const props = defineProps<{
+  source: DataSource;
+  studyUids?: string[];
+  title?: string;
+  /** Override the built-in keyboard shortcuts (merged over `DEFAULT_KEYMAP`). */
+  keymap?: Keymap;
+}>();
 const series = ref<SeriesSummary[]>([]);
 const cellCount = ref(1);
 const activeCell = ref(0);
+// "grid" = the stack-cell grid; "mpr" = a 3-plane volume reconstruction that
+// replaces the stage (the grid stays mounted but hidden). Min slices to bother.
+const MIN_MPR_SLICES = 16;
+const layoutMode = ref<"grid" | "mpr">("grid");
+const mprReady = ref(false);
+const mprEls = {
+  axial: ref<HTMLDivElement | null>(null),
+  coronal: ref<HTMLDivElement | null>(null),
+  sagittal: ref<HTMLDivElement | null>(null),
+  volume3d: ref<HTMLDivElement | null>(null),
+};
+let mpr: MprHandle | null = null;
+let enteringMpr = false;
+// Active 3D volume-rendering preset (only meaningful in MPR mode).
+const vrPreset = ref<string>(VR_PRESETS[0]);
 const activeTool = ref<string>(TOOLS.WindowLevel);
 const cineFps = ref(CINE_FPS);
 const confirmClearOpen = ref(false);
@@ -232,6 +299,8 @@ const els: (HTMLDivElement | null)[] = fill(null);
 const stacks: (StackHandle | null)[] = fill(null);
 const cellImageIds: string[][] = Array.from({ length: MAX_CELLS }, () => []);
 const tokens = fill(0);
+// Unsubscribe from the global annotation-change listener (set on mount).
+let unsubscribeMeasurements: (() => void) | null = null;
 
 // Which cells are on screen: in single view only the focused cell shows (so it
 // fills the stage); otherwise the first `cellCount` cells. Cells beyond that are
@@ -263,6 +332,25 @@ const canCine = computed(() => sliceCount[activeCell.value] > 1);
 const canDownload = computed(
   () => !!props.source.capabilities.downloadArchive && !!props.source.downloadArchive,
 );
+// Slice export needs a rendered image stack. Report/SR/PDF and empty cells never
+// set a positive sliceCount, so this is false for them (same signal as canCine).
+const canDownloadImage = computed(() => sliceCount[activeCell.value] > 0);
+// Bumped on annotation create/modify/remove (Cornerstone mutations don't trip Vue
+// reactivity) so the export gate re-evaluates and the button shows/hides live.
+const annotationVersion = ref(0);
+const canExportMeasurements = computed(() => {
+  void annotationVersion.value; // reactive dependency
+  return canDownloadImage.value && collectMeasurements().length > 0;
+});
+// Offer MPR only for a volume-capable active series (multi-slice cross-sectional).
+// Report/SR/PDF cells and short/odd series are excluded. While in MPR, stay true.
+const canMpr = computed(() => {
+  if (layoutMode.value === "mpr") return true;
+  const i = activeCell.value;
+  const s = series.value[seriesIdx[i]];
+  if (!s || pdfUrl[i] || srTree[i]) return false;
+  return isVolumeCapable(s, sliceCount[i], { min: MIN_MPR_SLICES });
+});
 // Top loader bar follows the active cell: visible only while its multi-frame
 // series is still warming (some frames not yet cached).
 const caching = computed(() => {
@@ -420,7 +508,12 @@ function stopCine(i: number) {
   }
 }
 
-function setLayout(n: number) {
+function setLayout(n: number | "mpr") {
+  if (n === "mpr") {
+    if (layoutMode.value !== "mpr") void enterMpr(); // re-entry guard
+    return;
+  }
+  if (layoutMode.value === "mpr") exitMpr(); // leaving MPR for a normal grid
   if (!VALID_LAYOUTS.has(n)) return;
   cellCount.value = n;
   // Keep the focused cell within the visible range when shrinking the grid.
@@ -429,8 +522,66 @@ function setLayout(n: number) {
   for (let i = 0; i < MAX_CELLS; i++) if (!isVisible(i)) stopCine(i);
 }
 
+// Build a 3-plane MPR from the active series. The grid (and its stacks) stay
+// mounted but hidden, so exitMpr() restores the stack view instantly.
+async function enterMpr() {
+  if (enteringMpr || mpr) return;
+  const i = activeCell.value;
+  const ids = cellImageIds[i];
+  if (ids.length < MIN_MPR_SLICES) return;
+  enteringMpr = true;
+  stopCine(i);
+  mprReady.value = false;
+  layoutMode.value = "mpr";
+  await nextTick(); // let the MPR panes mount so their refs populate
+  const { axial, coronal, sagittal, volume3d } = mprEls;
+  if (!axial.value || !coronal.value || !sagittal.value || !volume3d.value) {
+    enteringMpr = false;
+    return;
+  }
+  const modality = series.value[seriesIdx[i]]?.modality;
+  vrPreset.value = defaultVrPreset(modality);
+  mpr = createMprView(
+    {
+      axial: axial.value,
+      coronal: coronal.value,
+      sagittal: sagittal.value,
+      volume3d: volume3d.value,
+    },
+    {
+      onReady: () => (mprReady.value = true),
+      onVoi: (v) => (wl[i] = v),
+      onError: onMprError,
+    },
+  );
+  await mpr.setVolume(ids, { modality });
+  enteringMpr = false;
+}
+
+// Switch the 3D pane's volume-rendering preset (CT-Bone, CT-Soft-Tissue, …).
+function onVrPreset(name: string) {
+  vrPreset.value = name;
+  mpr?.setPreset(name);
+}
+
+function exitMpr() {
+  mpr?.destroy();
+  mpr = null;
+  mprReady.value = false;
+  layoutMode.value = "grid";
+}
+
+function onMprError(e: unknown) {
+  console.warn("[viewer] MPR reconstruction failed", e);
+  exitMpr();
+}
+
+// W/L presets and Reset route to whichever view is active.
 const applyPreset = (p: { windowWidth: number; windowCenter: number }) =>
-  onActive((s) => s.setWindowLevel(p.windowWidth, p.windowCenter));
+  layoutMode.value === "mpr"
+    ? mpr?.setWindowLevel(p.windowWidth, p.windowCenter)
+    : onActive((s) => s.setWindowLevel(p.windowWidth, p.windowCenter));
+const onReset = () => (layoutMode.value === "mpr" ? mpr?.reset() : onActive((s) => s.reset()));
 const selectTool = (name: string) => {
   setPrimaryTool(name);
   activeTool.value = name;
@@ -440,6 +591,8 @@ const selectTool = (name: string) => {
 function doClearAnnotations() {
   confirmClearOpen.value = false;
   for (const s of stacks) s?.clearAnnotations();
+  // removeAllAnnotations() doesn't emit per-annotation events, so nudge the gate.
+  annotationVersion.value++;
 }
 
 function activeStudyUid(): string {
@@ -451,20 +604,121 @@ function onDownloadStudy() {
   );
 }
 
-function onKeydown(e: KeyboardEvent) {
-  const s = stacks[activeCell.value];
-  if (!s) return;
-  if (e.key === "ArrowDown" || e.key === "ArrowRight") {
-    s.scroll(1);
-    e.preventDefault();
-  } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
-    s.scroll(-1);
-    e.preventDefault();
+function triggerBlobDownload(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revoke on a later macrotask — revoking too eagerly (e.g. on the next frame)
+  // can cancel the download mid-flight in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+// Strip characters that are invalid in filenames across platforms.
+const sanitizeName = (s: string) => s.replace(/[\\/:*?"<>|]/g, "_");
+
+// Save the active slice (image + measurements, no metadata overlay) as a JPEG.
+function onDownloadImage() {
+  const i = activeCell.value;
+  const s = series.value[seriesIdx[i]];
+  const desc = sanitizeName(s?.seriesDescription || s?.modality || "slice");
+  // In MPR mode capture the axial pane; otherwise the active stack slice.
+  const capture =
+    layoutMode.value === "mpr" ? mpr?.captureJpeg("axial") : stacks[i]?.captureSliceJpeg();
+  const fileName =
+    layoutMode.value === "mpr" ? `${desc}_mpr_axial.jpg` : `${desc}_${sliceIndex[i] + 1}.jpg`;
+  void Promise.resolve(capture)
+    .then((blob) => {
+      if (blob) triggerBlobDownload(blob, fileName);
+    })
+    .catch((e) => console.warn("[viewer] slice image download failed", e));
+}
+
+// Export the drawn measurements (session-wide — Cornerstone annotation state is
+// global) as JSON or CSV. Filename derives from the active series.
+function onExportMeasurements(format: "json" | "csv") {
+  const measurements = collectMeasurements();
+  if (!measurements.length) return;
+  const i = activeCell.value;
+  const s = series.value[seriesIdx[i]];
+  const desc = sanitizeName(s?.seriesDescription || s?.modality || "measurements");
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  if (format === "json") {
+    const blob = new Blob([measurementsToJson(measurements)], { type: "application/json" });
+    triggerBlobDownload(blob, `${desc}_measurements_${stamp}.json`);
+  } else {
+    const blob = new Blob([measurementsToCsv(measurements)], { type: "text/csv" });
+    triggerBlobDownload(blob, `${desc}_measurements_${stamp}.csv`);
   }
+}
+
+// Built-in shortcuts, with any host overrides merged on top.
+const keymap = computed(() => ({ ...DEFAULT_KEYMAP, ...props.keymap }));
+
+// Don't hijack keys while the user is typing in a field or operating a control.
+function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el || !el.tagName) return false;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable === true;
+}
+
+function onKeydown(e: KeyboardEvent) {
+  if (isTypingTarget(e.target)) return;
+  const cmd = resolveHotkey(e, keymap.value);
+  if (!cmd) return;
+  const applyPresetHotkey = () => {
+    // Digit keys apply the Nth window preset for the active modality
+    // (CT ships five; other modalities only if a host registered them).
+    const p = windowPresetsFor(activeModality.value)[cmd.kind === "preset" ? cmd.index : 0];
+    if (p) applyPreset(p);
+  };
+  // In MPR mode the stack is hidden; only the commands that route to the volume
+  // (presets + reset) apply. Ignore the stack-only ones so keys don't silently
+  // act on the hidden grid.
+  if (layoutMode.value === "mpr") {
+    if (cmd.kind === "preset") applyPresetHotkey();
+    else if (cmd.kind === "reset") onReset();
+    else return;
+    e.preventDefault();
+    return;
+  }
+  const s = stacks[activeCell.value];
+  switch (cmd.kind) {
+    case "tool":
+      selectTool(TOOLS[cmd.tool]);
+      break;
+    case "invert":
+      s?.invert();
+      break;
+    case "rotate":
+      s?.rotate();
+      break;
+    case "flipH":
+      s?.flipH();
+      break;
+    case "reset":
+      s?.reset();
+      break;
+    case "cine":
+      toggleCine();
+      break;
+    case "scroll":
+      s?.scroll(cmd.delta);
+      break;
+    case "preset":
+      applyPresetHotkey();
+      break;
+  }
+  e.preventDefault();
 }
 
 onMounted(async () => {
   window.addEventListener("keydown", onKeydown);
+  unsubscribeMeasurements = onMeasurementsChanged(() => annotationVersion.value++);
   await initCornerstone();
   series.value = await props.source.getSeries(props.studyUids ?? []);
   if (series.value.length) await loadIntoCell(0, 0);
@@ -472,6 +726,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener("keydown", onKeydown);
+  unsubscribeMeasurements?.();
+  mpr?.destroy();
+  mpr = null;
   for (let i = 0; i < MAX_CELLS; i++) {
     tokens[i]++;
     stopCine(i);
@@ -552,6 +809,70 @@ onUnmounted(() => {
 .grid--n10 {
   grid-template-columns: repeat(5, 1fr);
   grid-template-rows: repeat(2, 1fr);
+}
+/* Hidden (not unmounted) while MPR is active, so the stack engines stay attached. */
+.grid--hidden {
+  display: none;
+}
+/* MPR / 3D: three orthographic planes + a volume-rendering pane in a 2×2
+   hanging protocol (a single scrolling column on phones). */
+.mpr {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 2px;
+  background: var(--border);
+}
+.mpr__pane {
+  position: relative;
+  background: #000;
+  min-height: 0;
+}
+/* The 3D pane hosts the Cornerstone canvas plus a floating preset picker. */
+.mpr__vr {
+  position: absolute;
+  inset: 0;
+}
+.mpr__preset {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mpr__preset-label {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.mpr__preset select {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--elevated) 88%, transparent);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mpr__preset select:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+}
+@media (max-width: 640px) {
+  .mpr {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(4, 1fr);
+    grid-auto-rows: minmax(40vw, 1fr);
+    overflow-y: auto;
+  }
 }
 .cell {
   position: relative;

@@ -13,8 +13,15 @@
   --accent-strong: #38b2bd;
   --highlight: #e08636;
   --highlight-strong: #c06f23;
-  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Oxygen is the project face (the host loads it — see the demo/CLI index.html);
+     it degrades cleanly to the system stack when the web font isn't present. */
+  --font: "Oxygen", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --r-sm: 6px;
   --r-md: 10px;
+
+  /* Apply the project face to the whole viewer so every control inherits it. */
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }

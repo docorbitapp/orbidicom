@@ -4,7 +4,23 @@
       <!-- Host actions (e.g. a "New study" button) injected by the app. -->
       <slot />
       <LangSwitcher />
-      <span class="dock__hint">{{ t("hint") }}</span>
+      <p class="dock__hint">
+        <svg
+          class="dock__hint-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 5v14" />
+          <path d="m8 9 4-4 4 4" />
+          <path d="m8 15 4 4 4-4" />
+        </svg>
+        <span>{{ t("hint") }}</span>
+      </p>
     </div>
   </div>
 </template>
@@ -21,21 +37,40 @@ defineProps<{ open?: boolean }>();
 .dock {
   flex: none;
 }
-/* Desktop: a cluster pinned to the bottom of the left rail. */
+/* Desktop: a tidy cluster pinned to the bottom of the left rail. Every control
+   shares one full-width, 36px-tall rhythm so the button and the language field
+   line up exactly. */
 .dock__panel {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
-  padding: 10px;
+  padding: 12px 10px;
   border-top: 1px solid var(--border);
   background: var(--panel);
 }
+/* Stretch slotted host actions and the language field to the same full width. */
+.dock__panel :deep(.lang) {
+  width: 100%;
+}
+.dock__panel :slotted(button) {
+  width: 100%;
+}
 .dock__hint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 2px 2px 0;
   font-family: var(--font);
   font-size: 11px;
   line-height: 1.35;
   color: var(--hush);
+}
+.dock__hint-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  opacity: 0.8;
 }
 
 @media (max-width: 640px) {
@@ -46,10 +81,10 @@ defineProps<{ open?: boolean }>();
     top: calc(56px + env(safe-area-inset-top, 0px));
     z-index: 70;
     display: none;
-    min-width: 200px;
+    min-width: 220px;
     max-width: calc(100vw - 20px);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--r-md);
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
   }
   .dock__panel--open {

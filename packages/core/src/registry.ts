@@ -28,9 +28,14 @@ export function listTools(): readonly ToolRegistration[] {
 }
 
 export function registerWindowPreset(p: WlPreset): void {
-  if (!presets.some((x) => x.modality === p.modality && x.name === p.name)) presets.push(p);
+  // Modality is matched case-insensitively (DICOM modalities are upper-case, but
+  // a host may register "ct"); dedupe on the normalized modality + name.
+  const m = p.modality.toUpperCase();
+  if (!presets.some((x) => x.modality.toUpperCase() === m && x.name === p.name)) presets.push(p);
 }
 
 export function listWindowPresets(modality?: string): readonly WlPreset[] {
-  return modality ? presets.filter((p) => p.modality === modality) : presets;
+  if (!modality) return presets;
+  const m = modality.toUpperCase();
+  return presets.filter((p) => p.modality.toUpperCase() === m);
 }

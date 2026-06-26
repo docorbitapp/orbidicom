@@ -223,7 +223,20 @@ function onDragLeave(e: DragEvent) {
             studyUids = undefined;
           "
         >
-          ↺ {{ t("newStudy") }}
+          <svg
+            class="newstudy__icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            <path d="M21 3v4h-4" />
+          </svg>
+          <span>{{ t("newStudy") }}</span>
         </button>
       </template>
     </Viewer>
@@ -323,6 +336,7 @@ body {
   padding: 24px;
   box-sizing: border-box;
   font-family:
+    "Oxygen",
     system-ui,
     -apple-system,
     "Segoe UI",
@@ -364,7 +378,8 @@ body {
 .dropzone__title {
   margin: 0;
   font-size: 26px;
-  letter-spacing: 0.2px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
 }
 .dropzone__hint {
   margin: 0;
@@ -491,21 +506,40 @@ body {
   right: calc(14px + env(safe-area-inset-right, 0px));
   z-index: 2;
 }
-/* Docked in the viewer's bottom-left controls (slot), so it's a normal button. */
+/* Docked in the viewer's bottom-left controls (slot). Uses the viewer's theme
+   tokens (it renders inside .orbidicom) so it matches the language field beside
+   it: same full width, 36px height, radius, and accent. */
 .newstudy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   width: 100%;
-  padding: 9px 14px;
-  border: 1px solid #38b2bd;
-  border-radius: 8px;
-  background: #1f6f78;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--accent-strong);
+  border-radius: var(--r-sm);
+  background: var(--accent);
   color: #fff;
   cursor: pointer;
   font: inherit;
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+.newstudy__icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
 }
 .newstudy:hover {
-  background: #38b2bd;
+  background: var(--accent-strong);
+}
+.newstudy:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
 }
 </style>

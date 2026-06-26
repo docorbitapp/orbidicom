@@ -4,6 +4,12 @@ export interface SeriesSummary {
   modality?: string;
   seriesDescription?: string;
   numberOfFrames?: number;
+  /**
+   * The series is a reconstructable 3D volume regardless of modality. Set by
+   * sources whose data is inherently volumetric but carries no cross-sectional
+   * DICOM modality (e.g. NIfTI), so the viewer can still offer MPR / 3D for it.
+   */
+  volumetric?: boolean;
 }
 
 export interface InstanceMetadata {
