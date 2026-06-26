@@ -36,11 +36,11 @@ single command.
 | ✅     | **Runs anywhere** — offline, `npx orbidicom`, Kubernetes/Helm                                                                              |
 | ✅     | **MPR + 3D volume rendering (VR)** — tri-planar + crosshairs + VR presets (CT-Bone, MIP, …)                                                |
 | ✅     | **Measurement export** — JSON + CSV                                                                                                        |
-| ⬜     | **DICOM-SR export** — measurement SR generation — _Tier 2_                                                                                 |
+| 🟡     | **DICOM-SR export** — measurement SR generation (`buildMeasurementSr`); Part-10/STOW upload is the follow-up — _Tier 2_                    |
 | 🟡     | **DICOM-SEG** — read-only segment/labelmap parsing; WebGL render needs QA — _Tier 2_                                                       |
 | ✅     | **Hanging protocols** — `single` / `grid` built-ins + custom; `hanging-protocol` prop                                                      |
 | 🟡     | **More data sources** — STOW-RS + DICOM-JSON shipped; DIMSE/cloud need a bridge — _Tier 2_                                                 |
-| 🟡     | **Study list / worklist** — QIDO-RS `searchStudies` (UI follow-up) — _Tier 2_                                                              |
+| ✅     | **Study list / worklist** — QIDO-RS `searchStudies` + a `<StudyList>` filter/results component                                             |
 | ✅     | **Plugin SDK** — `registerPlugin` (tools / presets / data sources) + data-source factory registry                                          |
 | ⬜     | **AI assist** — `orbidicom ai` (measurement, auto-W/L, report drafting) — _Tier 3_                                                         |
 

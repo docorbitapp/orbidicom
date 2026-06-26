@@ -30,8 +30,10 @@ differentiators.
 - [x] **Crosshairs** — `CrosshairsTool` links the three MPR planes. _Shipped._ (Standalone
       reference lines for the stack grid remain a follow-up.)
 - [x] **Measurement export** — `collectMeasurements` + JSON/CSV export of Length/Angle/ROI/
-      Probe from the toolbar. _Shipped._ DICOM-SR _generation_ is deferred (needs a Part-10
-      writer + STOW-RS upload); the exported shape is SR-friendly for that future builder.
+      Probe from the toolbar. _Shipped._ **DICOM-SR generation** now ships too —
+      `buildMeasurementSr` (`core/src/sr/to-json.ts`) turns the measurements into a Comprehensive
+      SR (TID-1500-flavored, DICOM-JSON) that round-trips through the SR reader. _Encoding to
+      Part-10 (dcmjs) for STOW-RS upload is the remaining host-side step._
 
 ### Tier 2 — differentiators that fit the thin + pluggable identity
 
@@ -45,15 +47,17 @@ differentiators.
 - [ ] **DICOM-SEG display** — labelmap rendering (read-only first), then brush/threshold edit.
       _Read-only **parsing** shipped (`core/src/seg/parse.ts`): SOP-class detection, segment
       definitions (labels, property codes, Recommended-Display-CIELab → sRGB colors), per-frame
-      → segment/source-image mapping, BINARY bitstream decode; plus DICOMweb discovery
+      → segment/source-image mapping, BINARY bitstream decode, and labelmap assembly
+      (`buildSegLabelmaps` → one segment-number raster per source image); plus DICOMweb discovery
       (`listSegmentations`, SEG routed out of the image stack). Remaining: the WebGL labelmap
       actor (Cornerstone3D) + real-browser QA, then brush/threshold edit._
 - [x] **More data sources** — STOW-RS upload (`DicomWebDataSource.storeInstances`, multipart/
       related) and an in-memory **DICOM-JSON** `DataSource` shipped; both additive, no UI
       branching. _DIMSE / cloud adapters still need a server-side bridge / external SDKs._
 - [x] **Study list / worklist** — QIDO-RS `searchStudies` (`StudyQuery` → `StudySummary[]`) on
-      the `DataSource` contract, implemented for DICOMweb. _Shipped at the API layer; a study-list
-      UI panel is the follow-up._
+      the `DataSource` contract (DICOMweb), plus a `<StudyList>` Vue component: a patient/ID/
+      accession/modality filter form → results table that emits `open(studyInstanceUID)`. RTL-aware,
+      capability-gated. _Shipped._
 
 ### Tier 3 — AI (the real differentiator)
 

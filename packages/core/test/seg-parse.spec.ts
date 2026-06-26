@@ -5,6 +5,7 @@ import {
   mapFramesToSegments,
   cielabToRgb,
   unpackBinarySegmentationFrames,
+  buildSegLabelmaps,
   SEG_SOP_CLASS_UID,
 } from "../src/seg/parse";
 
@@ -93,5 +94,28 @@ describe("DICOM-SEG parsing", () => {
     const masks = unpackBinarySegmentationFrames(new Uint8Array([0x35]), 2, 2, 2);
     expect(Array.from(masks[0])).toEqual([1, 0, 1, 0]);
     expect(Array.from(masks[1])).toEqual([1, 1, 0, 0]);
+  });
+
+  it("assembles per-frame masks into one labelmap per source image, merging segments", () => {
+    const masks = [new Uint8Array([1, 0, 1, 0]), new Uint8Array([0, 1, 0, 1])];
+    const frameMap = [
+      { segmentNumber: 1, sourceSopInstanceUid: "src-A" },
+      { segmentNumber: 2, sourceSopInstanceUid: "src-A" },
+    ];
+    const maps = buildSegLabelmaps({ rows: 2, columns: 2 }, masks, frameMap);
+    expect(maps).toHaveLength(1);
+    expect(maps[0].sourceSopInstanceUid).toBe("src-A");
+    expect(Array.from(maps[0].data)).toEqual([1, 2, 1, 2]); // segment number per pixel, 0 = background
+  });
+
+  it("produces a separate labelmap per source image and skips frames with no source", () => {
+    const masks = [new Uint8Array([1, 1]), new Uint8Array([1, 0]), new Uint8Array([1, 1])];
+    const frameMap = [
+      { segmentNumber: 1, sourceSopInstanceUid: "src-A" },
+      { segmentNumber: 1, sourceSopInstanceUid: "src-B" },
+      { segmentNumber: 2 }, // no source image → cannot be placed
+    ];
+    const maps = buildSegLabelmaps({ rows: 1, columns: 2 }, masks, frameMap);
+    expect(maps.map((m) => m.sourceSopInstanceUid).sort()).toEqual(["src-A", "src-B"]);
   });
 });
