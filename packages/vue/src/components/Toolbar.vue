@@ -25,7 +25,7 @@
 
     <!-- W/L presets only exist for CT; hidden for other modalities. -->
     <template v-if="presets.length">
-      <label class="wl">
+      <label class="wl" @click="openSelect">
         <span class="wl__label">W/L</span>
         <select
           class="wl__select"
@@ -138,7 +138,7 @@
     <div class="toolbar__sep" />
 
     <!-- Grid layout: 1×1 .. 2×5 (1/2/4/6/8/10 viewports). -->
-    <label class="layout" :title="t('layout')">
+    <label class="layout" :title="t('layout')" @click="openSelect">
       <svg
         class="layout__icon"
         viewBox="0 0 24 24"
@@ -153,6 +153,7 @@
       </svg>
       <select
         class="layout__select"
+        :aria-label="t('layout')"
         :value="mprActive ? 'mpr' : String(layout)"
         @change="onLayoutChange(($event.target as HTMLSelectElement).value)"
       >
@@ -400,6 +401,22 @@ function onLayoutChange(value: string) {
   emit("setLayout", value === "mpr" ? "mpr" : Number(value));
 }
 
+// The whole field is a <label>, but tapping its leading icon/label (or the
+// chevron) only FOCUSES the inner <select> — it doesn't open the picker. Open it
+// explicitly so any tap on the field acts like a dropdown. showPicker() is
+// supported in modern Chrome/Safari; .focus() is the graceful fallback elsewhere.
+function openSelect(e: MouseEvent) {
+  const field = e.currentTarget as HTMLElement;
+  const sel = field.querySelector("select");
+  if (!sel || e.target === sel) return;
+  sel.focus();
+  try {
+    (sel as HTMLSelectElement & { showPicker?: () => void }).showPicker?.();
+  } catch {
+    /* showPicker unsupported or blocked — focus is the fallback */
+  }
+}
+
 // Inner SVG markup per left-tool icon (static, trusted). Titles are stored as
 // i18n keys (not resolved strings) so they re-translate when the language changes.
 const toolButtons: { name: string; titleKey: I18nKey; icon: string }[] = [
@@ -539,73 +556,99 @@ const toolTitle = (tool: { name: string; titleKey: I18nKey }) =>
   background: color-mix(in srgb, #b9852a 35%, transparent);
   border-color: #b9852a;
 }
-.wl {
+/* W/L + grid controls render as one bordered "field" — a leading label/icon, the
+   value, and a trailing chevron — so the whole control unmistakably reads as a
+   dropdown on every device. The native <select> is kept (OS picker on mobile,
+   accessible, tests intact), just made transparent/borderless inside the field. */
+.wl,
+.layout {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   flex: none;
-}
-.wl__label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--hush);
-  letter-spacing: 0.4px;
-}
-/* Custom-styled selects: drop the OS chevron for our own, with hover/focus rings
-   matching the rest of the controls (LangSwitcher, buttons). */
-.wl__select,
-.layout__select {
   height: 34px;
-  padding: 0 30px 0 10px; /* room for the chevron */
-  border-radius: var(--r-sm);
-  background-color: var(--elevated);
-  color: var(--text);
+  padding: 0 9px;
   border: 1px solid var(--border);
-  font: inherit;
-  font-size: 13px;
+  border-radius: var(--r-sm);
+  background: var(--elevated);
   cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239aa7a7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 9px center;
-  background-size: 14px;
-  transition:
-    border-color 0.12s,
-    color 0.12s;
+  transition: border-color 0.12s;
 }
-.wl__select:hover,
-.layout__select:hover {
+.wl:hover,
+.layout:hover {
   border-color: color-mix(in srgb, var(--accent-strong) 45%, var(--border));
 }
-.wl__select:focus-visible,
-.layout__select:focus-visible {
+/* The ring follows the inner <select>'s keyboard focus. */
+.wl:focus-within,
+.layout:focus-within {
   outline: 2px solid var(--accent-strong);
   outline-offset: 1px;
   border-color: var(--accent-strong);
 }
-/* The opened option list (where the browser honors it). */
+.wl__label {
+  font-size: 11px;
+  font-weight: 600;
+  /* --muted (not --hush) so 11px text clears WCAG AA contrast on the field. */
+  color: var(--muted);
+  letter-spacing: 0.4px;
+}
+.layout {
+  color: var(--muted);
+}
+.layout__icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+.wl__select,
+.layout__select {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 0;
+  height: 100%;
+  /* Reserve space the chevron overlaps, so a click on the chevron still opens it. */
+  padding-inline: 0 18px;
+  padding-block: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  /* iOS Safari won't vertically center a borderless select on its own — pin the
+     value with an explicit line-height and start-align it next to the label. */
+  line-height: 32px;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+}
+/* Shared chevron: a masked icon so it inherits a theme color and stays crisp; the
+   trailing affordance that signals "this opens a menu". pointer-events:none + the
+   negative margin let it sit over the select's hit area (taps open the menu). */
+.wl::after,
+.layout::after {
+  content: "";
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-inline-start: -16px;
+  background-color: var(--muted);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23000'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='m6%209%206%206%206-6'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23000'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='m6%209%206%206%206-6'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  pointer-events: none;
+  transition: background-color 0.12s;
+}
+.wl:hover::after,
+.layout:hover::after {
+  background-color: var(--text);
+}
+/* The opened option list (where the browser honors styling). */
 .wl__select option,
 .layout__select option {
   background: var(--panel);
   color: var(--text);
-}
-/* Right-to-left: chevron + text padding flip to the left. */
-[dir="rtl"] .wl__select,
-[dir="rtl"] .layout__select {
-  padding: 0 10px 0 30px;
-  background-position: left 9px center;
-}
-.layout {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex: none;
-  color: var(--muted);
-}
-.layout__icon {
-  width: 18px;
-  height: 18px;
 }
 /* Mobile-only hamburger in the header, in normal flow before the title.
    Borderless ghost icon so it blends into the header (seamless, modern). */
