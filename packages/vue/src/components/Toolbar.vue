@@ -551,16 +551,50 @@ const toolTitle = (tool: { name: string; titleKey: I18nKey }) =>
   color: var(--hush);
   letter-spacing: 0.4px;
 }
-.wl__select {
+/* Custom-styled selects: drop the OS chevron for our own, with hover/focus rings
+   matching the rest of the controls (LangSwitcher, buttons). */
+.wl__select,
+.layout__select {
   height: 34px;
-  padding: 0 8px;
+  padding: 0 30px 0 10px; /* room for the chevron */
   border-radius: var(--r-sm);
-  background: var(--elevated);
+  background-color: var(--elevated);
   color: var(--text);
   border: 1px solid var(--border);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239aa7a7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 14px;
+  transition:
+    border-color 0.12s,
+    color 0.12s;
+}
+.wl__select:hover,
+.layout__select:hover {
+  border-color: color-mix(in srgb, var(--accent-strong) 45%, var(--border));
+}
+.wl__select:focus-visible,
+.layout__select:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+  border-color: var(--accent-strong);
+}
+/* The opened option list (where the browser honors it). */
+.wl__select option,
+.layout__select option {
+  background: var(--panel);
+  color: var(--text);
+}
+/* Right-to-left: chevron + text padding flip to the left. */
+[dir="rtl"] .wl__select,
+[dir="rtl"] .layout__select {
+  padding: 0 10px 0 30px;
+  background-position: left 9px center;
 }
 .layout {
   display: inline-flex;
@@ -572,17 +606,6 @@ const toolTitle = (tool: { name: string; titleKey: I18nKey }) =>
 .layout__icon {
   width: 18px;
   height: 18px;
-}
-.layout__select {
-  height: 34px;
-  padding: 0 8px;
-  border-radius: var(--r-sm);
-  background: var(--elevated);
-  color: var(--text);
-  border: 1px solid var(--border);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
 }
 /* Mobile-only hamburger in the header, in normal flow before the title.
    Borderless ghost icon so it blends into the header (seamless, modern). */

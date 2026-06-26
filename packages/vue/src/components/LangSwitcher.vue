@@ -288,9 +288,12 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", onPointerDown)
   top: calc(100% + 6px);
 }
 .lang__search {
+  /* border-box so width:100% + padding + border fills the popover exactly,
+     lining the field up with the option rows below (no overhang). */
+  box-sizing: border-box;
   width: 100%;
-  height: 32px;
-  padding: 0 10px;
+  height: 34px;
+  padding: 0 9px;
   margin-bottom: 6px;
   border-radius: var(--r-sm);
   background: var(--bg);
