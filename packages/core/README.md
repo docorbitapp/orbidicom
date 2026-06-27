@@ -22,6 +22,12 @@ No Vue, no DOM-framework code, no hardcoded endpoints.
 npm install @orbidicom/core
 ```
 
+> **Just want to look at images?** You don't need to write any code. The
+> [`orbidicom`](https://www.npmjs.com/package/orbidicom) CLI serves the full
+> viewer in one command — `npx orbidicom` for local files, or
+> `npx orbidicom --pacs <url>` against a DICOMweb PACS. Reach for `@orbidicom/core`
+> when you're embedding the engine in your own app or wiring a custom backend.
+
 ## Usage
 
 Use a built-in data source:
@@ -32,6 +38,44 @@ import { DicomWebDataSource } from "@orbidicom/core";
 const source = new DicomWebDataSource({ root: "/dicom-web" });
 const series = await source.getSeries(["1.2.840…"]);
 const imageIds = await source.getImageIds(series[0]);
+```
+
+### Authentication
+
+Every `DicomWebDataSource` takes an optional `auth` strategy (the discriminator
+is `kind`). `none` (default) and `cookie` add no `Authorization` header —
+`cookie` rides on `withCredentials` for a cross-origin session — while `basic`,
+`bearer`, and `custom` inject headers:
+
+```ts
+new DicomWebDataSource({ root: "/dicom-web" }); // same-origin, no header
+new DicomWebDataSource({ root: "https://pacs/dicom-web", auth: { kind: "cookie" } });
+new DicomWebDataSource({
+  root: "https://pacs/dicom-web",
+  auth: { kind: "basic", username: "user", password: "pass" },
+});
+new DicomWebDataSource({
+  root: "https://pacs/dicom-web",
+  // A bearer token can be a string, or a (possibly async) function for refresh:
+  auth: { kind: "bearer", token: () => getFreshAccessToken() },
+});
+```
+
+### Other built-in sources
+
+```ts
+import { LocalDataSource, NiftiDataSource, DicomJsonDataSource } from "@orbidicom/core";
+
+// Offline: parse dropped .dcm files (a study folder or zip), no server.
+const local = new LocalDataSource();
+await local.addFiles(fileList); // File[] from an <input> / drag-drop
+
+// A single .nii / .nii.gz volume.
+const nifti = new NiftiDataSource();
+await nifti.addFile(niiFile);
+
+// In-memory DICOM-JSON metadata (e.g. a QIDO/WADO-RS response you already hold).
+const json = new DicomJsonDataSource({ metadata, root: "/dicom-web" });
 ```
 
 …or add your own backend by implementing the `DataSource` contract — `getSeries`,
@@ -61,6 +105,79 @@ registerWindowPreset({ modality: "MR", name: "Brain T2", windowWidth: 2200, wind
 windowPresetsFor("MR"); // → [{ modality: "MR", name: "Brain T2", … }]
 ```
 
+### Search a worklist (QIDO-RS)
+
+DICOMweb sources advertise `capabilities.studySearch` and implement
+`searchStudies` — a `StudyQuery` in, `StudySummary[]` out:
+
+```ts
+const studies = await source.searchStudies({
+  patientId: "12345",
+  modality: "CT",
+  studyDate: "20240101-20241231", // DICOM date range
+  limit: 50,
+});
+// → [{ studyInstanceUID, patientName, studyDate, modalitiesInStudy, … }]
+```
+
+### Export measurements (JSON / CSV / DICOM-SR)
+
+Collect the on-screen annotations, then serialize them. The same measurements
+feed a Comprehensive DICOM-SR document:
+
+```ts
+import {
+  collectMeasurements,
+  measurementsToCsv,
+  measurementsToJson,
+  buildMeasurementSr,
+} from "@orbidicom/core";
+
+const measurements = collectMeasurements(); // Length / Angle / ROI / Probe
+const csv = measurementsToCsv(measurements);
+const json = measurementsToJson(measurements);
+const srDocument = buildMeasurementSr(measurements); // DICOM-JSON SR (TID-1500-flavored)
+```
+
+### Keyboard shortcuts (framework-agnostic)
+
+`resolveHotkey` maps a key event to a command against `DEFAULT_KEYMAP` (or your
+own map), so the keymap is reusable outside Vue:
+
+```ts
+import { DEFAULT_KEYMAP, resolveHotkey } from "@orbidicom/core";
+
+window.addEventListener("keydown", (e) => {
+  const cmd = resolveHotkey(e, DEFAULT_KEYMAP);
+  if (cmd?.kind === "tool") setPrimaryTool(cmd.tool);
+  // other commands: invert, rotate, flipH, reset, cine, scroll, preset
+});
+```
+
+### Read DICOM metadata
+
+```ts
+import { readImageMetadata, readMetadataGroups } from "@orbidicom/core";
+
+const meta = await readImageMetadata(imageId); // { patientName, modality, pixelSpacing, … }
+const groups = await readMetadataGroups(imageId); // grouped rows for a tag-reader panel
+```
+
+### MPR + 3D volume rendering
+
+Build a volume from a stack and drive four linked panes (axial / coronal /
+sagittal / 3D-VR) with selectable transfer-function presets:
+
+```ts
+import { createMprView, isVolumeCapable, VR_PRESETS } from "@orbidicom/core";
+
+if (isVolumeCapable(series, imageIds.length)) {
+  const mpr = createMprView({ axial, coronal, sagittal, volume3d }); // four HTMLDivElements
+  await mpr.setVolume(imageIds, { modality: "CT" });
+  mpr.setPreset("CT-Bone"); // VR_PRESETS: CT-Bone, CT-Lung, CT-MIP, MR-Default, …
+}
+```
+
 ## Plugins & data sources
 
 Bundle tools, window presets, and backend factories into a plugin and register them in one
@@ -88,4 +205,8 @@ and a public plugin SDK around these registries.
 
 ## License
 
-MIT
+MIT © OrbiDICOM contributors.
+
+"OrbiDICOM" and its logo are trademarks of DocOrbit — the MIT license covers the
+source code, not the name or logo. Trademark, licensing, security, or commercial
+inquiries: **<info@docorbit.com>**.

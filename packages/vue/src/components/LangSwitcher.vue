@@ -298,6 +298,14 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", onPointerDown)
   font: inherit;
   font-size: 13px;
 }
+/* iOS Safari auto-zooms the page when a focused input's text is < 16px. On
+   touch devices bump the field to 16px to suppress that zoom-on-focus; desktop
+   keeps the compact 13px. */
+@media (pointer: coarse) {
+  .lang__search {
+    font-size: 16px;
+  }
+}
 .lang__search:focus-visible {
   outline: 2px solid var(--accent-strong);
   outline-offset: 1px;

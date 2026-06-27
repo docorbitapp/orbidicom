@@ -169,10 +169,10 @@
       </select>
     </label>
 
-    <!-- Cycle the on-image overlay: full info -> patient data blurred -> hidden. -->
+    <!-- Toggle the on-image overlay: show full info <-> blur patient data. -->
     <button
       class="tbtn tbtn--overlay"
-      :class="{ 'tbtn--active': mode !== 'off', 'tbtn--privacy': mode === 'private' }"
+      :class="{ 'tbtn--active': mode === 'full', 'tbtn--privacy': mode === 'private' }"
       :title="overlayTitle"
       @click="$emit('cycleOverlay')"
     >
@@ -192,7 +192,7 @@
       </svg>
       <!-- private: shield (patient data protected) -->
       <svg
-        v-else-if="mode === 'private'"
+        v-else
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -202,20 +202,6 @@
       >
         <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z" />
         <path d="M9 12l2 2 4-4" />
-      </svg>
-      <!-- off: eye with slash (overlay hidden) -->
-      <svg
-        v-else
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.7"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M3 12s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7z" />
-        <circle cx="12" cy="12" r="2.5" />
-        <path d="M3 3l18 18" />
       </svg>
     </button>
 
@@ -340,8 +326,8 @@ const props = defineProps<{
   modality: string;
   activeTool: string;
   layout: number;
-  /** Overlay cycle state: full info, patient data blurred, or hidden. */
-  overlayMode?: "full" | "private" | "off";
+  /** Overlay state: full info shown, or patient data blurred. */
+  overlayMode?: "full" | "private";
   /** Whether the mobile controls menu is open (for the hamburger state). */
   menuOpen?: boolean;
   title?: string;
@@ -374,11 +360,7 @@ const emit = defineEmits<{
 
 const mode = computed(() => props.overlayMode ?? "full");
 const overlayTitle = computed(() =>
-  mode.value === "full"
-    ? t("overlayFull")
-    : mode.value === "private"
-      ? t("overlayPrivate")
-      : t("overlayOff"),
+  mode.value === "full" ? t("overlayFull") : t("overlayPrivate"),
 );
 
 // Selectable viewport grids: cell count -> rows×cols label.

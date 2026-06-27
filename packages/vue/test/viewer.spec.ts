@@ -174,7 +174,7 @@ describe("Viewer", () => {
     expect(w.find(".tbtn--download").exists()).toBe(false);
   });
 
-  it("info button cycles the overlay: full -> blurred -> hidden -> full", async () => {
+  it("info button toggles the overlay between full info and blurred patient data", async () => {
     const w = mount(Viewer, { props: { source: source as never } });
     await flushPromises();
     const btn = w.find(".tbtn--overlay");
@@ -183,16 +183,12 @@ describe("Viewer", () => {
     expect(w.find(".ovlroot").exists()).toBe(true);
     expect(w.find(".ovl--blur").exists()).toBe(false);
 
-    // -> private: overlay visible, patient block blurred.
+    // -> private: overlay stays visible, patient block blurred.
     await btn.trigger("click");
     expect(w.find(".ovlroot").exists()).toBe(true);
     expect(w.find(".ovl--blur").exists()).toBe(true);
 
-    // -> off: overlay removed entirely.
-    await btn.trigger("click");
-    expect(w.find(".ovlroot").exists()).toBe(false);
-
-    // -> back to full.
+    // -> back to full: overlay still visible, blur removed (no hidden state).
     await btn.trigger("click");
     expect(w.find(".ovlroot").exists()).toBe(true);
     expect(w.find(".ovl--blur").exists()).toBe(false);

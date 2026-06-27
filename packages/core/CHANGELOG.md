@@ -1,5 +1,19 @@
 # @orbidicom/core
 
+## 0.6.1
+
+### Patch Changes
+
+- Simplify the on-image metadata overlay to two states — **show info** ⇄ **blur
+  patient data** — dropping the third "hidden" mode (the overlay is now always
+  shown, the button just toggles the privacy blur). Fix iOS Safari zooming the page
+  when the language-search field is focused (input text is bumped to 16px on touch
+  devices). Expand the README docs with verified, copy-pasteable examples (auth
+  strategies, local/NIfTI/DICOM-JSON sources, worklist search, measurement/SR
+  export, MPR, theming, keymaps), cross-link the `orbidicom` CLI from the core and
+  vue package docs, refresh the roadmap for v0.6.0, and add a trademark/contact
+  notice (info@docorbit.com).
+
 ## 0.6.0
 
 ### Minor Changes

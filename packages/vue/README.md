@@ -42,6 +42,11 @@ CSS-variable theming.
 npm install @orbidicom/vue @orbidicom/core vue
 ```
 
+> **Not embedding it in an app?** The [`orbidicom`](https://www.npmjs.com/package/orbidicom)
+> CLI serves this exact UI in one command — `npx orbidicom` (local files) or
+> `npx orbidicom --pacs <url>` (any DICOMweb PACS). Use this package when you want
+> the `<Viewer>` inside your own Vue app, themed and wired to your data source.
+
 ## Usage
 
 Pick a data source from `@orbidicom/core`, pass it to `<Viewer>`. The available sources:
@@ -56,9 +61,9 @@ import { Viewer } from "@orbidicom/vue";
 import "@orbidicom/vue/theme.css";
 import { DicomWebDataSource } from "@orbidicom/core";
 
-// Point at a DICOMweb PACS (optionally with an auth strategy):
+// Point at a DICOMweb PACS (optionally with an auth strategy — discriminator is `kind`):
 const source = new DicomWebDataSource({ root: "/dicom-web" });
-// const source = new DicomWebDataSource({ root: "/dicom-web", auth: { type: "bearer", token } });
+// const source = new DicomWebDataSource({ root: "/dicom-web", auth: { kind: "bearer", token } });
 
 // …or run fully offline on local files:
 // import { LocalDataSource } from "@orbidicom/core";
@@ -87,6 +92,70 @@ custom function):
 Implement your own backend by satisfying the `DataSource` contract in `@orbidicom/core`
 (`getSeries`, `getImageIds`, plus `capabilities`) — no UI changes needed.
 
+### Worklist → open a study
+
+`<StudyList>` renders a patient / ID / accession / modality filter form over a
+DICOMweb source's `searchStudies` and emits `open` with the chosen study UID —
+hand it straight to `<Viewer>`:
+
+```vue
+<script setup lang="ts">
+import { ref } from "vue";
+import { StudyList, Viewer } from "@orbidicom/vue";
+import "@orbidicom/vue/theme.css";
+import { DicomWebDataSource } from "@orbidicom/core";
+
+const source = new DicomWebDataSource({ root: "/dicom-web" });
+const studyUids = ref<string[]>([]);
+</script>
+
+<template>
+  <StudyList v-if="!studyUids.length" :source="source" @open="(uid) => (studyUids = [uid])" />
+  <Viewer v-else :source="source" :study-uids="studyUids" />
+</template>
+```
+
+### Theming
+
+The UI is styled entirely with CSS custom properties — override them on a wrapper
+(or `:root`) after importing `theme.css`. No build step or Sass needed:
+
+```css
+@import "@orbidicom/vue/theme.css";
+
+.my-viewer {
+  --accent: #1f6f78; /* primary accent */
+  --accent-strong: #38b2bd; /* active tool / focus ring */
+  --bg: #0b0e0e; /* viewport background */
+  --panel: #14191a; /* toolbars & rails */
+  --text: #e6eded;
+  --font: "Inter", system-ui, sans-serif;
+  --r-md: 10px; /* corner radius */
+}
+```
+
+```vue
+<div class="my-viewer"><Viewer :source="source" /></div>
+```
+
+### Remap keyboard shortcuts
+
+Pass a `keymap` to override the defaults (the engine's `DEFAULT_KEYMAP` is the
+starting point):
+
+```vue
+<script setup lang="ts">
+import { Viewer } from "@orbidicom/vue";
+import { DEFAULT_KEYMAP } from "@orbidicom/core";
+
+const keymap = { ...DEFAULT_KEYMAP, z: { kind: "tool", tool: "Zoom" } };
+</script>
+
+<template>
+  <Viewer :source="source" :keymap="keymap" />
+</template>
+```
+
 ## Supported languages
 
 English, Türkçe, Deutsch, Español, Français, Italiano, Português, Русский, 中文, 日本語,
@@ -98,4 +167,8 @@ Missing keys fall back to English.
 
 ## License
 
-MIT
+MIT © OrbiDICOM contributors.
+
+"OrbiDICOM" and its logo are trademarks of DocOrbit — the MIT license covers the
+source code, not the name or logo. Trademark, licensing, security, or commercial
+inquiries: **<info@docorbit.com>**.

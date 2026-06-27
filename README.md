@@ -15,7 +15,11 @@ single command.
 
 ## Features & roadmap
 
-✅ shipped · ⬜ planned. Tiers and detail in [ROADMAP.md](./ROADMAP.md).
+✅ shipped · 🟡 partial · ⬜ planned. Tiers and detail in [ROADMAP.md](./ROADMAP.md).
+
+As of **v0.6.0**, all of Tier 1 and most of Tier 2 have shipped; the remaining gaps
+— DICOM-SEG WebGL render, DICOM-SR Part-10/STOW upload, the `npm create orbidicom`
+scaffolder, and Tier 3 AI assist — are tracked in [ROADMAP.md](./ROADMAP.md).
 
 | Status | Capability                                                                                                                                 |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -82,6 +86,60 @@ Theme it, translate it (live switching across 20 built-in languages — and easy
 more), and plug in your own data sources and tools. See the [docs](./docs) and
 [CONTRIBUTING](./CONTRIBUTING.md). (A `npm create orbidicom` scaffolder is planned.)
 
+### Recipes
+
+A few common setups — the package READMEs ([`@orbidicom/core`](./packages/core/README.md),
+[`@orbidicom/vue`](./packages/vue/README.md), [`orbidicom`](./packages/cli/README.md)) have
+the full API and many more examples.
+
+**Run fully offline on local files** — no server, drag in `.dcm`/`.nii`:
+
+```ts
+import { LocalDataSource } from "@orbidicom/core";
+const source = new LocalDataSource();
+await source.addFiles(files); // File[] from an <input> or drag-and-drop
+// <Viewer :source="source" />
+```
+
+**Authenticate against a PACS** — `auth` is a discriminated union on `kind`:
+
+```ts
+new DicomWebDataSource({ root: "https://pacs/dicom-web", auth: { kind: "cookie" } });
+new DicomWebDataSource({ root: "https://pacs/dicom-web", auth: { kind: "bearer", token } });
+new DicomWebDataSource({
+  root: "https://pacs/dicom-web",
+  auth: { kind: "basic", username, password },
+});
+```
+
+**Add a backend the UI never has to know about** — implement `DataSource`:
+
+```ts
+import type { DataSource, SeriesSummary } from "@orbidicom/core";
+
+class MyPacs implements DataSource {
+  capabilities = { multiStudy: true };
+  async getSeries(studyUids: string[]): Promise<SeriesSummary[]> {
+    /* … */ return [];
+  }
+  async getImageIds(series: SeriesSummary): Promise<string[]> {
+    /* … */ return [];
+  }
+}
+```
+
+**Theme it** — every color, font, and radius is a CSS variable:
+
+```css
+@import "@orbidicom/vue/theme.css";
+.viewer {
+  --accent: #1f6f78;
+  --accent-strong: #38b2bd;
+  --bg: #0b0e0e;
+  --font: "Inter", system-ui, sans-serif;
+}
+```
+
 ## Deploy to Kubernetes
 
 OrbiDICOM is **Kubernetes-ready** with a container image and a bundled **Helm
@@ -131,4 +189,8 @@ guide. Translations fall back to English for any missing key, so a partial local
 
 ## License
 
-MIT © OrbiDICOM contributors
+MIT © OrbiDICOM contributors.
+
+"OrbiDICOM" and its logo are trademarks of DocOrbit — the MIT license covers the
+source code, not the name or logo. Trademark, licensing, security, or commercial
+inquiries: **<info@docorbit.com>**.

@@ -76,7 +76,7 @@
             <SrView v-else-if="srTree[i - 1]" :tree="srTree[i - 1]!" />
 
             <Overlay
-              v-if="overlayOn && sliceCount[i - 1]"
+              v-if="sliceCount[i - 1]"
               :meta="meta[i - 1]"
               :wl="wl[i - 1]"
               :index="sliceIndex[i - 1]"
@@ -274,10 +274,9 @@ const vrPreset = ref<string>(VR_PRESETS[0]);
 const activeTool = ref<string>(TOOLS.WindowLevel);
 const cineFps = ref(CINE_FPS);
 const confirmClearOpen = ref(false);
-// Overlay cycle: full info -> patient data blurred (demos) -> hidden.
-const overlayMode = ref<"full" | "private" | "off">("full");
-const OVERLAY_CYCLE = { full: "private", private: "off", off: "full" } as const;
-const overlayOn = computed(() => overlayMode.value !== "off");
+// Overlay toggle: show full info <-> blur patient data (for demos/screenshots).
+const overlayMode = ref<"full" | "private">("full");
+const OVERLAY_CYCLE = { full: "private", private: "full" } as const;
 const overlayPrivacy = computed(() => overlayMode.value === "private");
 const cycleOverlay = () => (overlayMode.value = OVERLAY_CYCLE[overlayMode.value]);
 

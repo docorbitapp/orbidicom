@@ -1,11 +1,20 @@
 # Roadmap
 
+## Status at a glance (v0.6.0)
+
+All of **Tier 1** (clinical table-stakes) and most of **Tier 2** (differentiators)
+have shipped. The remaining gaps are: DICOM-SEG WebGL labelmap rendering (parsing
+is done), DICOM-SR Part-10 encoding + STOW-RS upload (SR generation is done), the
+`npm create orbidicom` scaffolder (stub today), and **Tier 3** AI assist. Details
+per item below.
+
 ## Now (v1.x) — clean, embeddable 2D viewer
 
 - 2D stack viewer with the full tool set (W/L + presets, zoom/pan/rotate/flip/invert,
   length/angle/bidirectional/ROIs/probe, cine, grids, series rail)
-- `DataSource` interface + DICOMweb adapter + local-files adapter; pluggable auth
-- Theming, i18n, `npx orbidicom`, `npm create orbidicom`, optional `orbidicom ai`
+- `DataSource` interface + DICOMweb / local-files / NIfTI / DICOM-JSON adapters; pluggable auth
+- Theming, i18n, and `npx orbidicom` — _shipped_. A `npm create orbidicom` scaffolder
+  and the optional `orbidicom ai` command are _planned_ (a stub today; see Tier 3)
 
 ## Next
 

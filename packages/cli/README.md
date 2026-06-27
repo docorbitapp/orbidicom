@@ -49,6 +49,25 @@ or a reverse proxy that injects auth server-side.
 | `--port <n>`                | Port to serve on (default `4173`)                    |
 | `--open` / `--no-open`      | Open (default) / don't open the browser              |
 
+## Recipes
+
+```bash
+# Open a specific study on a custom port, without auto-launching a browser:
+npx orbidicom --pacs https://host/dicom-web --study 1.2.840… --port 8080 --no-open
+
+# Local-only review station — drag .dcm / .nii files in, nothing leaves the machine:
+npx orbidicom
+
+# Same-origin proxy: point --pacs at a relative path your own server proxies to the PACS
+# (keeps the PACS in-cluster, no CORS, no credentials in the browser):
+npx orbidicom --pacs /dicom-web
+```
+
+Because `--pacs` / `--study` are also read from the URL
+(`…/?pacs=/dicom-web&study=1.2.840…`), one running instance (or the container
+image) can open any study — handy for embedding the viewer in an `<iframe>` or
+linking to it from a worklist without rebuilding.
+
 ## Features & roadmap
 
 ✅ shipped · ⬜ planned. Tiers and detail in [ROADMAP.md](https://github.com/docorbitapp/orbidicom/blob/main/ROADMAP.md).
@@ -98,4 +117,8 @@ Project, docs, and source: <https://github.com/docorbitapp/orbidicom>
 
 ## License
 
-MIT © OrbiDICOM contributors
+MIT © OrbiDICOM contributors.
+
+"OrbiDICOM" and its logo are trademarks of DocOrbit — the MIT license covers the
+source code, not the name or logo. Trademark, licensing, security, or commercial
+inquiries: **<info@docorbit.com>**.
