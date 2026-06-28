@@ -1,5 +1,13 @@
 # @orbidicom/core
 
+## 0.7.0
+
+### Minor Changes
+
+- Zoom now responds to a single-finger touch drag like every other tool, instead of
+  requiring a two-finger pinch. The `ZoomTool` is registered with `pinchToZoom: false`
+  so its touch handler uses the plain vertical-drag zoom when Zoom is the active tool.
+
 ## 0.6.1
 
 ### Patch Changes

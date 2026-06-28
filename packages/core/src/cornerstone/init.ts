@@ -98,7 +98,13 @@ export async function initCornerstone(opts: InitOptions = {}): Promise<void> {
   addTool(TrackballRotateTool);
 
   const tg = ToolGroupManager.createToolGroup(TOOL_GROUP_ID)!;
-  for (const name of ALL_TOOLS.map((t) => t.toolName)) tg.addTool(name);
+  // pinchToZoom:false makes Zoom's touchDragCallback the plain vertical-drag zoom
+  // (same as the mouse), so a single finger zooms when Zoom is the active tool —
+  // matching every other one-finger tool. The default (pinchToZoom:true) only
+  // zooms on a two-finger pinch and ignores single-touch drags entirely.
+  for (const name of ALL_TOOLS.map((t) => t.toolName)) {
+    tg.addTool(name, name === ZoomTool.toolName ? { pinchToZoom: false } : undefined);
+  }
 
   // Mouse: left=W/L, right=pan, left+right=zoom, wheel + middle-drag=scroll.
   // Touch: one finger drives the active tool (W/L by default), two fingers pan.
