@@ -14,6 +14,8 @@ const stack = {
   reset: vi.fn(),
   clearAnnotations: vi.fn(),
   refreshAnnotations: vi.fn(),
+  showSegmentation: vi.fn().mockResolvedValue(true),
+  hideSegmentation: vi.fn(),
   captureSliceJpeg: vi.fn().mockResolvedValue(new Blob(["x"], { type: "image/jpeg" })),
   destroy: vi.fn(),
 };
@@ -171,6 +173,32 @@ const twoSeriesSource = {
     { seriesInstanceUID: "B", studyInstanceUID: "ST", modality: "CT", seriesDescription: "Cor" },
   ]),
   getImageIds: vi.fn(async () => ["wadors:1", "wadors:2"]),
+};
+
+const segSource = {
+  capabilities: {
+    downloadArchive: false,
+    encapsulatedPdf: false,
+    multiStudy: false,
+    segmentations: true,
+  },
+  getSeries: vi.fn(async () => [
+    {
+      seriesInstanceUID: "S1",
+      studyInstanceUID: "ST",
+      modality: "CT",
+      seriesDescription: "Axial",
+      numberOfFrames: 2,
+    },
+  ]),
+  getImageIds: vi.fn(async () => ["wadors:1", "wadors:2"]),
+  listSegmentations: vi.fn(() => [
+    { sopUid: "seg-1", label: "Tumor", segmentCount: 1, referencedSeriesUid: "S1" },
+  ]),
+  getSegmentation: vi.fn(async () => ({
+    info: { segmentationType: "BINARY", rows: 1, columns: 2, numberOfFrames: 2, segments: [] },
+    labelmaps: [],
+  })),
 };
 
 const pdfSource = {
@@ -363,6 +391,28 @@ describe("Viewer", () => {
     } finally {
       collectMeasurements.mockReturnValue([]); // restore for other tests
     }
+  });
+
+  it("lists a series' segmentations and toggles one onto the active stack", async () => {
+    stack.showSegmentation.mockClear().mockResolvedValue(true);
+    segSource.getSegmentation.mockClear();
+    const w = mount(Viewer, { props: { source: segSource as never } });
+    await flushPromises();
+
+    const items = w.findAll(".segs__item");
+    expect(items).toHaveLength(1);
+    expect(items[0].text()).toContain("Tumor");
+
+    await items[0].find("input").setValue(true);
+    await flushPromises();
+
+    expect(segSource.getSegmentation).toHaveBeenCalled();
+    expect(stack.showSegmentation).toHaveBeenCalled();
+
+    // Toggling off removes it.
+    await items[0].find("input").setValue(false);
+    await flushPromises();
+    expect(stack.hideSegmentation).toHaveBeenCalledWith("seg-seg-1");
   });
 
   it("downloads the active slice as a JPEG (image + annotations) with a sensible filename", async () => {

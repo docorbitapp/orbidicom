@@ -19,6 +19,13 @@ export interface InstanceMetadata {
 
 import type { SrTree } from "./sr/types";
 export type { SrTree, SrNode, SrCode, SrRef, SrValueType } from "./sr/types";
+import type { SegInfo, SegLabelmap } from "./seg/parse";
+
+/** A fully-decoded SEG instance: its segment definitions + per-source-image labelmaps. */
+export interface SegmentationData {
+  info: SegInfo;
+  labelmaps: SegLabelmap[];
+}
 
 export interface DataSourceCapabilities {
   downloadArchive?: boolean;
@@ -126,6 +133,8 @@ export interface DataSource {
   ): Promise<StoreResult>;
   /** DICOM-SEG segmentations found in a series during {@link getImageIds}. */
   listSegmentations?(series: SeriesSummary): SegmentationInstance[];
+  /** Fetch and decode a SEG instance into segment definitions + per-image labelmaps. */
+  getSegmentation?(series: SeriesSummary, seg: SegmentationInstance): Promise<SegmentationData>;
   /** @deprecated use {@link listReports} — kept so existing callers compile. */
   listPdfs?(series: SeriesSummary): PdfInstance[];
   /** Fetch an encapsulated PDF's bytes and return an object URL (application/pdf). */

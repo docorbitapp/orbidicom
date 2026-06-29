@@ -41,6 +41,18 @@
     <div class="content">
       <div class="sidebar">
         <SeriesRail :series="series" :active="seriesIdx[activeCell]" @select="selectSeries" />
+        <!-- DICOM-SEG: per-series segmentations, each toggled as a labelmap overlay. -->
+        <div v-if="segmentations.length" class="segs">
+          <div class="segs__title">{{ t("segmentations") }}</div>
+          <label v-for="sg in segmentations" :key="sg.sopUid" class="segs__item">
+            <input
+              type="checkbox"
+              :checked="shownSegs.has(sg.sopUid)"
+              @change="toggleSegmentation(sg)"
+            />
+            <span class="segs__label">{{ sg.label || sg.sopUid }}</span>
+          </label>
+        </div>
         <Controls :open="menuOpen">
           <!-- Host actions (e.g. a "New study" button) docked bottom-left. -->
           <slot name="actions" />
@@ -259,6 +271,7 @@ import type {
   HangingProtocol,
   HangingProtocolName,
   KeyImage,
+  SegmentationInstance,
 } from "@orbidicom/core";
 import { t, dir, getLang } from "../i18n";
 
@@ -517,6 +530,33 @@ function closeUploadSr() {
   confirmUploadSrOpen.value = false;
   srUploadMsg.value = null;
 }
+// DICOM-SEG: list the active series' segmentations and toggle each on/off as a
+// labelmap over the active cell's stack. Rendering requires a real WebGL viewport.
+const shownSegs = reactive(new Set<string>());
+const segmentations = computed<SegmentationInstance[]>(() => {
+  void imageVersion.value;
+  const s = series.value[seriesIdx[activeCell.value]];
+  return (s && props.source.listSegmentations?.(s)) || [];
+});
+async function toggleSegmentation(seg: SegmentationInstance) {
+  const stack = stacks[activeCell.value];
+  if (!stack || !props.source.getSegmentation) return;
+  const segId = `seg-${seg.sopUid}`;
+  if (shownSegs.has(seg.sopUid)) {
+    stack.hideSegmentation(segId);
+    shownSegs.delete(seg.sopUid);
+    return;
+  }
+  const s = series.value[seriesIdx[activeCell.value]];
+  if (!s) return;
+  try {
+    const data = await props.source.getSegmentation(s, seg);
+    if (await stack.showSegmentation(data, segId)) shownSegs.add(seg.sopUid);
+  } catch {
+    /* leave the toggle off — a real failure surfaces in the console/network tab */
+  }
+}
+
 async function doUploadSr() {
   if (srUploadBusy.value) return;
   srUploadBusy.value = true;
@@ -911,6 +951,7 @@ async function applyInitialLayout() {
   // A fresh series set invalidates any prior annotation history + key-image flags.
   annotationHistory.reset();
   keyImages.clear();
+  shownSegs.clear();
   const { cellCount: cc, assignments } = applyHangingProtocol(
     series.value,
     props.hangingProtocol ?? "single",
@@ -972,6 +1013,34 @@ onUnmounted(() => {
   flex: 1;
   min-height: 0;
   border-right: 0;
+}
+.segs {
+  flex: none;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text);
+  max-height: 30%;
+  overflow: auto;
+}
+.segs__title {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+.segs__item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+.segs__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .stage {
   position: relative;
