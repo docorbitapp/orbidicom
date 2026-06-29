@@ -62,7 +62,7 @@ differentiators.
   `DataSource.getSegmentation` fetches + decodes a SEG into per-image labelmaps
   (`DicomWebDataSource` via WADO-RS bulkdata), `seg/align.ts` maps them to the stack, and
   `cornerstone/seg.ts` draws them as a Cornerstone stack labelmap (`StackHandle.show/hide
-    Segmentation`) with per-segment colors; a "Segmentations" sidebar toggles each on/off.
+  Segmentation`) with per-segment colors; a "Segmentations" sidebar toggles each on/off.
   **Pending real-browser QA** — see `docs/seg-rendering-qa.md`. Remaining: MPR/volume
   labelmaps + brush/threshold edit._
 - [x] **More data sources** — STOW-RS upload (`DicomWebDataSource.storeInstances`, multipart/
