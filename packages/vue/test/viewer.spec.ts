@@ -13,37 +13,50 @@ const stack = {
   flipH: vi.fn(),
   reset: vi.fn(),
   clearAnnotations: vi.fn(),
+  refreshAnnotations: vi.fn(),
+  showSegmentation: vi.fn().mockResolvedValue(true),
+  hideSegmentation: vi.fn(),
   captureSliceJpeg: vi.fn().mockResolvedValue(new Blob(["x"], { type: "image/jpeg" })),
   destroy: vi.fn(),
 };
 // Hoisted so the vi.mock factory (which Vitest lifts above imports) can read them.
-const { setPrimaryTool, collectMeasurements, mprHandle, createMprView } = vi.hoisted(() => {
-  const mprHandle = {
-    setVolume: vi.fn().mockResolvedValue(undefined),
-    setWindowLevel: vi.fn(),
-    setPreset: vi.fn(),
-    reset: vi.fn(),
-    captureJpeg: vi.fn().mockResolvedValue(null),
-    destroy: vi.fn(),
-  };
-  return {
-    setPrimaryTool: vi.fn(),
-    collectMeasurements: vi.fn(() => [] as unknown[]),
-    mprHandle,
-    // Fire onReady synchronously so the viewer's mprReady gate flips (the preset
-    // picker is disabled until the volume is ready); the real handle fires it
-    // after the volume builds.
-    createMprView: vi.fn((_els: unknown, cb?: { onReady?: () => void }) => {
-      cb?.onReady?.();
-      return mprHandle;
-    }),
-  };
-});
+const { setPrimaryTool, collectMeasurements, mprHandle, createMprView, annotationHistory } =
+  vi.hoisted(() => {
+    const mprHandle = {
+      setVolume: vi.fn().mockResolvedValue(undefined),
+      setWindowLevel: vi.fn(),
+      setPreset: vi.fn(),
+      reset: vi.fn(),
+      captureJpeg: vi.fn().mockResolvedValue(null),
+      destroy: vi.fn(),
+    };
+    return {
+      setPrimaryTool: vi.fn(),
+      collectMeasurements: vi.fn(() => [] as unknown[]),
+      annotationHistory: {
+        undo: vi.fn(() => false),
+        redo: vi.fn(() => false),
+        canUndo: vi.fn(() => false),
+        canRedo: vi.fn(() => false),
+        reset: vi.fn(),
+        subscribe: vi.fn(() => () => {}),
+      },
+      mprHandle,
+      // Fire onReady synchronously so the viewer's mprReady gate flips (the preset
+      // picker is disabled until the volume is ready); the real handle fires it
+      // after the volume builds.
+      createMprView: vi.fn((_els: unknown, cb?: { onReady?: () => void }) => {
+        cb?.onReady?.();
+        return mprHandle;
+      }),
+    };
+  });
 vi.mock("@orbidicom/core", () => {
   // Minimal stand-ins for the pure hotkey helpers (the real ones live in core).
   const DEFAULT_KEYMAP: Record<string, unknown> = {
     z: { kind: "tool", tool: "Zoom" },
     i: { kind: "invert" },
+    k: { kind: "keyImage" },
     " ": { kind: "cine" },
     ArrowRight: { kind: "scroll", delta: 1 },
     "1": { kind: "preset", index: 0 },
@@ -55,6 +68,19 @@ vi.mock("@orbidicom/core", () => {
     if (e.ctrlKey || e.metaKey || e.altKey) return null;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     return map[k] ?? null;
+  };
+  const resolveEditCommand = (e: {
+    key: string;
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+    altKey?: boolean;
+    shiftKey?: boolean;
+  }) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return null;
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (k === "z") return e.shiftKey ? { kind: "redo" } : { kind: "undo" };
+    if (k === "y") return { kind: "redo" };
+    return null;
   };
   return {
     initCornerstone: vi.fn().mockResolvedValue(undefined),
@@ -70,11 +96,17 @@ vi.mock("@orbidicom/core", () => {
         ? [{ modality: "CT", name: "Soft Tissue", windowWidth: 400, windowCenter: 40 }]
         : [],
     resolveHotkey,
+    resolveEditCommand,
     DEFAULT_KEYMAP,
     collectMeasurements,
     measurementsToJson: vi.fn(() => "{}"),
     measurementsToCsv: vi.fn(() => ""),
+    keyImagesToJson: vi.fn(() => "{}"),
+    buildMeasurementSr: vi.fn(() => ({})),
+    dicomJsonToPart10: vi.fn(() => new Uint8Array([1, 2, 3])),
     onMeasurementsChanged: vi.fn(() => () => {}),
+    annotationHistory,
+    startAnnotationHistory: vi.fn(() => () => {}),
     createMprView,
     isVolumeCapable: (_s: unknown, n: number) => n >= 16,
     // Honors a custom protocol function; any built-in name defaults to single view.
@@ -141,6 +173,32 @@ const twoSeriesSource = {
     { seriesInstanceUID: "B", studyInstanceUID: "ST", modality: "CT", seriesDescription: "Cor" },
   ]),
   getImageIds: vi.fn(async () => ["wadors:1", "wadors:2"]),
+};
+
+const segSource = {
+  capabilities: {
+    downloadArchive: false,
+    encapsulatedPdf: false,
+    multiStudy: false,
+    segmentations: true,
+  },
+  getSeries: vi.fn(async () => [
+    {
+      seriesInstanceUID: "S1",
+      studyInstanceUID: "ST",
+      modality: "CT",
+      seriesDescription: "Axial",
+      numberOfFrames: 2,
+    },
+  ]),
+  getImageIds: vi.fn(async () => ["wadors:1", "wadors:2"]),
+  listSegmentations: vi.fn(() => [
+    { sopUid: "seg-1", label: "Tumor", segmentCount: 1, referencedSeriesUid: "S1" },
+  ]),
+  getSegmentation: vi.fn(async () => ({
+    info: { segmentationType: "BINARY", rows: 1, columns: 2, numberOfFrames: 2, segments: [] },
+    labelmaps: [],
+  })),
 };
 
 const pdfSource = {
@@ -248,12 +306,113 @@ describe("Viewer", () => {
     expect(stack.setWindowLevel).toHaveBeenCalledWith(400, 40);
   });
 
-  it("ignores shortcuts modified with Ctrl/Cmd (browser shortcuts pass through)", async () => {
+  it("ignores non-undo shortcuts modified with Ctrl/Cmd (browser shortcuts pass through)", async () => {
     setPrimaryTool.mockClear();
+    stack.invert.mockClear();
     mount(Viewer, { props: { source: source as never } });
     await flushPromises();
+    // Ctrl+I is a browser/OS combo, not one of ours — invert must not fire.
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "i", ctrlKey: true }));
+    expect(stack.invert).not.toHaveBeenCalled();
+  });
+
+  it("maps Ctrl+Z to undo and Ctrl+Shift+Z to redo (and refreshes overlays)", async () => {
+    annotationHistory.undo.mockClear().mockReturnValue(true);
+    annotationHistory.redo.mockClear().mockReturnValue(true);
+    stack.refreshAnnotations.mockClear();
+    mount(Viewer, { props: { source: source as never } });
+    await flushPromises();
+
+    // (Prior tests leave Viewers mounted on the shared window listener, so assert
+    // the command mapping rather than exact call counts.)
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true }));
-    expect(setPrimaryTool).not.toHaveBeenCalled();
+    expect(annotationHistory.undo).toHaveBeenCalled();
+    expect(annotationHistory.redo).not.toHaveBeenCalled();
+    expect(stack.refreshAnnotations).toHaveBeenCalled();
+
+    annotationHistory.undo.mockClear();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, shiftKey: true }));
+    expect(annotationHistory.redo).toHaveBeenCalled();
+    expect(annotationHistory.undo).not.toHaveBeenCalled();
+  });
+
+  it("flags the current slice as a key image with 'k' (star activates, export appears)", async () => {
+    const w = mount(Viewer, { props: { source: source as never } });
+    await flushPromises();
+    expect(w.find(".tbtn--keyimage").classes()).not.toContain("tbtn--active");
+    expect(w.find(".tbtn--export-keyimages").exists()).toBe(false);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k" }));
+    await flushPromises();
+
+    expect(w.find(".tbtn--keyimage").classes()).toContain("tbtn--active");
+    expect(w.find(".tbtn--export-keyimages").exists()).toBe(true);
+
+    // Pressing 'k' again unflags it.
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k" }));
+    await flushPromises();
+    expect(w.find(".tbtn--keyimage").classes()).not.toContain("tbtn--active");
+  });
+
+  it("uploads measurements as a DICOM SR via STOW when the source supports store", async () => {
+    collectMeasurements.mockReturnValue([{ annotationUID: "a" } as never]);
+    const storeInstances = vi.fn().mockResolvedValue({ stored: ["1.2.3"], failed: [] });
+    const storeSource = {
+      capabilities: {
+        downloadArchive: false,
+        encapsulatedPdf: false,
+        multiStudy: false,
+        store: true,
+      },
+      getSeries: vi.fn(async () => [
+        {
+          seriesInstanceUID: "S1",
+          studyInstanceUID: "ST",
+          modality: "CT",
+          seriesDescription: "Axial",
+          numberOfFrames: 2,
+        },
+      ]),
+      getImageIds: vi.fn(async () => ["wadors:1", "wadors:2"]),
+      storeInstances,
+    };
+    try {
+      const w = mount(Viewer, { props: { source: storeSource as never, studyUids: ["ST"] } });
+      await flushPromises();
+
+      const btn = w.find(".tbtn--upload-sr");
+      expect(btn.exists()).toBe(true);
+      await btn.trigger("click"); // opens the confirm modal
+      await w.find(".modal__btn--primary").trigger("click"); // confirm upload
+      await flushPromises();
+
+      expect(storeInstances).toHaveBeenCalled();
+      expect(storeInstances.mock.calls[0][1]).toEqual({ studyUid: "ST" });
+    } finally {
+      collectMeasurements.mockReturnValue([]); // restore for other tests
+    }
+  });
+
+  it("lists a series' segmentations and toggles one onto the active stack", async () => {
+    stack.showSegmentation.mockClear().mockResolvedValue(true);
+    segSource.getSegmentation.mockClear();
+    const w = mount(Viewer, { props: { source: segSource as never } });
+    await flushPromises();
+
+    const items = w.findAll(".segs__item");
+    expect(items).toHaveLength(1);
+    expect(items[0].text()).toContain("Tumor");
+
+    await items[0].find("input").setValue(true);
+    await flushPromises();
+
+    expect(segSource.getSegmentation).toHaveBeenCalled();
+    expect(stack.showSegmentation).toHaveBeenCalled();
+
+    // Toggling off removes it.
+    await items[0].find("input").setValue(false);
+    await flushPromises();
+    expect(stack.hideSegmentation).toHaveBeenCalledWith("seg-seg-1");
   });
 
   it("downloads the active slice as a JPEG (image + annotations) with a sensible filename", async () => {

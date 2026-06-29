@@ -29,8 +29,14 @@ No Vue, no DOM-framework code, no hardcoded endpoints.
 - **Auth strategies** — `none` / `basic` / `bearer` / `cookie` / custom.
 - **Registries** — `registerTool` / `registerWindowPreset` and a modality-aware
   `windowPresetsFor` preset engine.
-- **Keyboard shortcuts** — a framework-agnostic keymap (`DEFAULT_KEYMAP`, `resolveHotkey`).
+- **Keyboard shortcuts** — a framework-agnostic keymap (`DEFAULT_KEYMAP`, `resolveHotkey`,
+  `resolveEditCommand` for undo/redo).
 - **Cornerstone3D setup** — `initCornerstone`, `createStack`, plus DICOM metadata + SR parsing.
+- **Annotations & reports** — measurement export (JSON/CSV) + DICOM-SR (`buildMeasurementSr`)
+  with Part-10 encoding (`dicomJsonToPart10`) for STOW-RS upload, plus create/delete undo/redo
+  (`annotationHistory`) and key-image export (`keyImagesToJson`).
+- **DICOM-SEG** — parse + decode a SEG into per-image labelmaps (`getSegmentation`,
+  `buildSegLabelmaps`) and render it over a stack (`StackHandle.showSegmentation`); read-only.
 
 ## Install
 
@@ -155,6 +161,15 @@ const json = measurementsToJson(measurements);
 const srDocument = buildMeasurementSr(measurements); // DICOM-JSON SR (TID-1500-flavored)
 ```
 
+Encode that SR to Part-10 and upload it to a store-capable PACS (STOW-RS):
+
+```ts
+import { dicomJsonToPart10 } from "@orbidicom/core";
+
+const part10 = dicomJsonToPart10(srDocument); // Explicit-VR-LE Part-10 bytes
+await source.storeInstances?.([part10], { studyUid: "1.2.840…" }); // multipart/related STOW
+```
+
 ### Keyboard shortcuts (framework-agnostic)
 
 `resolveHotkey` maps a key event to a command against `DEFAULT_KEYMAP` (or your
@@ -215,9 +230,10 @@ const source = createDataSource("dicomweb", { root: "/dicom-web" });
 ## Roadmap
 
 See the project [ROADMAP.md](https://github.com/docorbitapp/orbidicom/blob/main/ROADMAP.md).
-Shipped here: a volume engine for MPR + 3D volume rendering (`createMprView`, VR presets) and
-measurement export (`collectMeasurements`, JSON/CSV). Next up: DICOM-SEG, DICOM-SR generation,
-and a public plugin SDK around these registries.
+Shipped here: MPR + 3D volume rendering (`createMprView`, VR presets), measurement export
+(JSON/CSV) + DICOM-SR with Part-10/STOW upload, annotation undo/redo, key-image flagging, and
+read-only DICOM-SEG labelmap rendering (2D stack, pending browser QA). Next up: DICOM-SEG
+MPR/volume rendering and brush/threshold editing.
 
 ## License
 

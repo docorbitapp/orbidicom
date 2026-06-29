@@ -32,36 +32,38 @@ single command.
 
 ✅ shipped · 🟡 partial · ⬜ planned. Tiers and detail in [ROADMAP.md](./ROADMAP.md).
 
-As of **v0.6.0**, all of Tier 1 and most of Tier 2 have shipped; the remaining gaps
-— DICOM-SEG WebGL render, DICOM-SR Part-10/STOW upload, the `npm create orbidicom`
-scaffolder, and Tier 3 AI assist — are tracked in [ROADMAP.md](./ROADMAP.md).
+As of **v0.8.0**, all of Tier 1 and most of Tier 2 have shipped — including annotation
+undo/redo, key-image flagging, DICOM-SR Part-10/STOW upload, and read-only DICOM-SEG
+labelmap rendering (2D stack, pending browser QA). The remaining gaps — DICOM-SEG MPR/edit
+and the `npm create orbidicom` scaffolder — are tracked in [ROADMAP.md](./ROADMAP.md).
 
-| Status | Capability                                                                                                                                 |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| ✅     | **2D viewing** on Cornerstone3D — window/level, zoom, pan, slice scroll, rotate, flip, invert                                              |
-| ✅     | **Cine** playback — per cell, adjustable fps                                                                                               |
-| ✅     | **Measurement tools** — length, angle, rectangle & ellipse ROI, probe                                                                      |
-| ✅     | **Keyboard shortcuts** — tools, transforms, slice nav, presets (shown in tooltips, remappable)                                             |
-| ✅     | **W/L preset engine** — CT built-ins + modality-aware, host-extensible                                                                     |
-| ✅     | **Grid layouts** — 1–10-up, each cell independent                                                                                          |
-| ✅     | **Download slice as JPEG** — image + measurements (no patient text)                                                                        |
-| ✅     | **Reports** — encapsulated PDF + DICOM Structured Report (SR)                                                                              |
-| ✅     | **Metadata** — on-image overlay with privacy blur + full DICOM tag reader                                                                  |
-| ✅     | **Data sources** — DICOMweb (QIDO/WADO-RS), local files, NIfTI, DICOM-JSON — one [`DataSource`](packages/core/src/datasource.ts) interface |
-| ✅     | **Auth** — none / basic / bearer / cookie / custom                                                                                         |
-| ✅     | **Study ZIP download** (DICOMweb)                                                                                                          |
-| ✅     | **STOW-RS upload** — `storeInstances` (multipart/related)                                                                                  |
-| ✅     | **20 UI languages** (incl. RTL: Arabic, Persian) + searchable switcher + CSS-variable theming                                              |
-| ✅     | **Runs anywhere** — offline, `npx orbidicom`, Kubernetes/Helm                                                                              |
-| ✅     | **MPR + 3D volume rendering (VR)** — tri-planar + crosshairs + VR presets (CT-Bone, MIP, …)                                                |
-| ✅     | **Measurement export** — JSON + CSV                                                                                                        |
-| 🟡     | **DICOM-SR export** — measurement SR generation (`buildMeasurementSr`); Part-10/STOW upload is the follow-up — _Tier 2_                    |
-| 🟡     | **DICOM-SEG** — read-only segment/labelmap parsing; WebGL render needs QA — _Tier 2_                                                       |
-| ✅     | **Hanging protocols** — `single` / `grid` built-ins + custom; `hanging-protocol` prop                                                      |
-| 🟡     | **More data sources** — STOW-RS + DICOM-JSON shipped; DIMSE/cloud need a bridge — _Tier 2_                                                 |
-| ✅     | **Study list / worklist** — QIDO-RS `searchStudies` + a `<StudyList>` filter/results component                                             |
-| ✅     | **Plugin SDK** — `registerPlugin` (tools / presets / data sources) + data-source factory registry                                          |
-| ⬜     | **AI assist** — `orbidicom ai` (measurement, auto-W/L, report drafting) — _Tier 3_                                                         |
+| Status | Capability                                                                                                                                   |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| ✅     | **2D viewing** on Cornerstone3D — window/level, zoom, pan, slice scroll, rotate, flip, invert                                                |
+| ✅     | **Cine** playback — per cell, adjustable fps                                                                                                 |
+| ✅     | **Measurement tools** — length, angle, rectangle & ellipse ROI, probe                                                                        |
+| ✅     | **Annotation undo/redo** — Ctrl/Cmd+Z · Ctrl/Cmd+Shift+Z + toolbar buttons (create & delete)                                                 |
+| ✅     | **Key-image flagging** — star toggle + count badge, `k` hotkey, JSON export                                                                  |
+| ✅     | **Keyboard shortcuts** — tools, transforms, slice nav, presets (shown in tooltips, remappable)                                               |
+| ✅     | **W/L preset engine** — CT built-ins + modality-aware, host-extensible                                                                       |
+| ✅     | **Grid layouts** — 1–10-up, each cell independent                                                                                            |
+| ✅     | **Download slice as JPEG** — image + measurements (no patient text)                                                                          |
+| ✅     | **Reports** — encapsulated PDF + DICOM Structured Report (SR)                                                                                |
+| ✅     | **Metadata** — on-image overlay with privacy blur + full DICOM tag reader                                                                    |
+| ✅     | **Data sources** — DICOMweb (QIDO/WADO-RS), local files, NIfTI, DICOM-JSON — one [`DataSource`](packages/core/src/datasource.ts) interface   |
+| ✅     | **Auth** — none / basic / bearer / cookie / custom                                                                                           |
+| ✅     | **Study ZIP download** (DICOMweb)                                                                                                            |
+| ✅     | **STOW-RS upload** — `storeInstances` (multipart/related)                                                                                    |
+| ✅     | **20 UI languages** (incl. RTL: Arabic, Persian) + searchable switcher + CSS-variable theming                                                |
+| ✅     | **Runs anywhere** — offline, `npx orbidicom`, Kubernetes/Helm                                                                                |
+| ✅     | **MPR + 3D volume rendering (VR)** — tri-planar + crosshairs + VR presets (CT-Bone, MIP, …)                                                  |
+| ✅     | **Measurement export** — JSON + CSV                                                                                                          |
+| ✅     | **DICOM-SR export** — measurement SR + Part-10 encoding & STOW-RS upload (`buildMeasurementSr` → `dicomJsonToPart10` → `storeInstances`)     |
+| 🟡     | **DICOM-SEG** — read-only labelmap rendering (2D stack: parse → decode → Cornerstone labelmap); browser QA pending, MPR/edit next — _Tier 2_ |
+| ✅     | **Hanging protocols** — `single` / `grid` built-ins + custom; `hanging-protocol` prop                                                        |
+| 🟡     | **More data sources** — STOW-RS + DICOM-JSON shipped; DIMSE/cloud need a bridge — _Tier 2_                                                   |
+| ✅     | **Study list / worklist** — QIDO-RS `searchStudies` + a `<StudyList>` filter/results component                                               |
+| ✅     | **Plugin SDK** — `registerPlugin` (tools / presets / data sources) + data-source factory registry                                            |
 
 ## Try it in one command
 

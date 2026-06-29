@@ -422,4 +422,61 @@ describe("DicomWebDataSource STOW-RS upload", () => {
     });
     await expect(ds.storeInstances([new Uint8Array([1])])).rejects.toThrow(/409/);
   });
+
+  it("routes a SEG out of the stack and decodes it into per-source-image labelmaps", async () => {
+    const refSrc = (sop: string) => ({
+      "00089124": { Value: [{ "00082112": { Value: [{ "00081155": V(sop) }] } }] },
+    });
+    const frame = (segNum: string, srcSop: string) => ({
+      "0062000A": { Value: [{ "0062000B": V(segNum) }] },
+      ...refSrc(srcSop),
+    });
+    const segMeta = {
+      "00080016": V("1.2.840.10008.5.1.4.1.1.66.4"), // SOP Class = Segmentation Storage
+      "00080018": V("seg-1"), // SOP Instance UID
+      "0008103E": V("Tumor SEG"), // Series Description (label)
+      "00280010": V("1"), // Rows
+      "00280011": V("2"), // Columns
+      "00280008": V("2"), // NumberOfFrames
+      "00620002": { Value: [{ "00620004": V("1"), "00620005": V("Tumor") }] }, // Segment Sequence
+      "00081115": { Value: [{ "0020000E": V("S1") }] }, // Referenced Series
+      "52009230": { Value: [frame("1", "sopA"), frame("1", "sopB")] }, // Per-frame Functional Groups
+      "7FE00010": {
+        BulkDataURI: "https://pacs/studies/study-1/series/Sseg/instances/seg-1/pixeldata",
+      },
+    };
+    const client = {
+      searchForSeries: vi.fn(async () => []),
+      retrieveSeriesMetadata: vi.fn(async () => [segMeta]),
+    };
+    // BINARY bitstream (LSB-first, continuous): frame0 px0=1, frame1 px1=1 -> 0b1001 = 0x09.
+    const segPixels = Uint8Array.from([0x09]);
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      arrayBuffer: async () => segPixels.slice().buffer,
+      headers: { get: () => "application/octet-stream" },
+    })) as unknown as typeof fetch;
+
+    const ds = new DicomWebDataSource({
+      root: "/pacs/dicom-web",
+      client: client as never,
+      fetchFn,
+    });
+    const series = { seriesInstanceUID: "Sseg", studyInstanceUID: "study-1" } as never;
+
+    const ids = await ds.getImageIds(series);
+    expect(ids).toEqual([]); // SEG is routed out of the image stack
+    const segList = ds.listSegmentations(series);
+    expect(segList).toEqual([
+      { sopUid: "seg-1", label: "Tumor SEG", segmentCount: 1, referencedSeriesUid: "S1" },
+    ]);
+
+    const data = await ds.getSegmentation!(series, segList[0]);
+    expect(data.info.segments.map((s) => s.label)).toEqual(["Tumor"]);
+    const bySop = Object.fromEntries(
+      data.labelmaps.map((l) => [l.sourceSopInstanceUid, Array.from(l.data)]),
+    );
+    expect(bySop).toEqual({ sopA: [1, 0], sopB: [0, 1] });
+    expect(fetchFn).toHaveBeenCalled();
+  });
 });

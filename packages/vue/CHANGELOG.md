@@ -1,5 +1,67 @@
 # @orbidicom/vue
 
+## 0.8.0
+
+### Minor Changes
+
+- [`614f04b`](https://github.com/docorbitapp/orbidicom/commit/614f04bf96ec36d353106c6275d223504d64d5ea) Thanks [@gasci](https://github.com/gasci)! - Add annotation undo/redo. Create and delete of measurements can now be stepped
+  back and forward via Ctrl/Cmd+Z (undo), Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y (redo),
+  and two new toolbar buttons that disable when their stack is empty.
+
+  - core: new `annotationHistory` controller + `startAnnotationHistory()`
+    (command/inverse history over Cornerstone's global annotation state), a pure
+    `resolveEditCommand` hotkey helper, and `StackHandle.refreshAnnotations()`.
+  - vue: undo/redo toolbar buttons, keyboard shortcuts, and `undo`/`redo` strings
+    in all 20 locales.
+
+  Clear-all resets the history (it is a deliberate bulk action, not an undoable
+  step); loading a new series set also resets it. Moving/resizing an existing
+  annotation is not a discrete history step, but such edits are preserved across
+  an undo→redo round trip.
+
+- [`09c19e7`](https://github.com/docorbitapp/orbidicom/commit/09c19e70ba6e10fa0738bc831cbca42ca2796df3) Thanks [@gasci](https://github.com/gasci)! - Add key-image flagging. Mark/unmark the current slice as a key image via a star
+  toolbar toggle (with a count badge) or the `k` hotkey, and export the flagged
+  slices as JSON.
+
+  - core: `KeyImage` type + `keyImagesToJson` serializer (provenance envelope,
+    mirrors the measurement export), and a `keyImage` hotkey command bound to `k`.
+  - vue: star toggle + count badge + capability-gated key-images export button;
+    `flagKeyImage`/`keyImages` strings in all 20 locales. Flags reset when a new
+    series set loads.
+
+- [`5e4b647`](https://github.com/docorbitapp/orbidicom/commit/5e4b6470d618f13f5dd2711ce2fabc2365b99bf1) Thanks [@gasci](https://github.com/gasci)! - Add read-only DICOM-SEG labelmap rendering (2D stack). Segmentations discovered in
+  a series can be toggled on/off as colored labelmap overlays.
+
+  - core: `DataSource.getSegmentation` fetches a SEG's PixelData via WADO-RS bulkdata
+    and decodes it (using the existing SEG parser) into per-source-image labelmaps
+    (`DicomWebDataSource` implementation, with the SEG metadata cached during
+    `getImageIds`). `seg/align.ts` pairs labelmaps to a viewport's stack by SOP UID,
+    and `cornerstone/seg.ts` (`StackHandle.showSegmentation` / `hideSegmentation`)
+    draws them as a Cornerstone stack labelmap with each segment's display color.
+  - vue: a "Segmentations" sidebar list for the active series with per-SEG toggles;
+    `segmentations` string in all 20 locales.
+
+  The data + orchestration layers are unit-tested; the WebGL render itself needs
+  real-browser verification — see `docs/seg-rendering-qa.md`. MPR/volume rendering
+  and brush/threshold editing remain future work.
+
+- [`5ff3ccf`](https://github.com/docorbitapp/orbidicom/commit/5ff3ccf96ddc1943de1a873e2ec9b50aeef8b7b3) Thanks [@gasci](https://github.com/gasci)! - Add DICOM-SR Part-10 encoding + STOW-RS upload. Measurements can now be uploaded
+  to a store-capable PACS as a Comprehensive SR.
+
+  - core: `dicomJsonToPart10` — a small, dependency-free Explicit-VR-Little-Endian
+    Part-10 writer (preamble + generated File Meta Information + dataset, including
+    nested sequences) that encodes the DICOM-JSON from `buildMeasurementSr`. Verified
+    by round-tripping through `dicom-parser`.
+  - vue: a capability-gated "Upload SR" toolbar button (shown when the source
+    advertises `store` and measurements exist) with a confirm + result dialog;
+    `uploadSr`/`confirmUploadSr`/`upload`/`srUploaded`/`srUploadFailed` strings in
+    all 20 locales. Uploads via the existing `DataSource.storeInstances` (STOW-RS).
+
+### Patch Changes
+
+- Updated dependencies [[`614f04b`](https://github.com/docorbitapp/orbidicom/commit/614f04bf96ec36d353106c6275d223504d64d5ea), [`09c19e7`](https://github.com/docorbitapp/orbidicom/commit/09c19e70ba6e10fa0738bc831cbca42ca2796df3), [`5e4b647`](https://github.com/docorbitapp/orbidicom/commit/5e4b6470d618f13f5dd2711ce2fabc2365b99bf1), [`5ff3ccf`](https://github.com/docorbitapp/orbidicom/commit/5ff3ccf96ddc1943de1a873e2ec9b50aeef8b7b3)]:
+  - @orbidicom/core@0.8.0
+
 ## 0.7.2
 
 ### Patch Changes

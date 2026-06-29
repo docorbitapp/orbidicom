@@ -24,6 +24,8 @@ export type HotkeyCommand =
   | { kind: "flipH" }
   | { kind: "reset" }
   | { kind: "cine" }
+  /** Toggle the active cell's current slice as a key image. */
+  | { kind: "keyImage" }
   | { kind: "scroll"; delta: number }
   /** Apply the Nth (0-based) window preset registered for the active modality. */
   | { kind: "preset"; index: number };
@@ -52,6 +54,8 @@ export const DEFAULT_KEYMAP: Keymap = {
   r: { kind: "rotate" },
   f: { kind: "flipH" },
   "0": { kind: "reset" },
+  // Key-image flag toggle.
+  k: { kind: "keyImage" },
   // Cine play/pause.
   " ": { kind: "cine" },
   // Slice navigation.
@@ -77,7 +81,11 @@ export interface KeyEventLike {
   ctrlKey?: boolean;
   metaKey?: boolean;
   altKey?: boolean;
+  shiftKey?: boolean;
 }
+
+/** An undo/redo intent resolved from a Ctrl/Cmd-modified keydown. */
+export type EditCommand = { kind: "undo" } | { kind: "redo" };
 
 /** Normalize an event key the way {@link DEFAULT_KEYMAP} is keyed. */
 export function normalizeKey(key: string): string {
@@ -93,4 +101,18 @@ export function normalizeKey(key: string): string {
 export function resolveHotkey(e: KeyEventLike, map: Keymap = DEFAULT_KEYMAP): HotkeyCommand | null {
   if (e.ctrlKey || e.metaKey || e.altKey) return null;
   return map[normalizeKey(e.key)] ?? null;
+}
+
+/**
+ * Resolve an editor-style undo/redo shortcut, or `null` if the keydown isn't one.
+ * Requires a Ctrl/Cmd modifier (so it's complementary to {@link resolveHotkey},
+ * which deliberately ignores Ctrl/Cmd): Ctrl/Cmd+Z is undo, Ctrl/Cmd+Shift+Z and
+ * Ctrl/Cmd+Y are redo. The UI calls this first and `preventDefault`s on a match.
+ */
+export function resolveEditCommand(e: KeyEventLike): EditCommand | null {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return null;
+  const key = normalizeKey(e.key);
+  if (key === "z") return e.shiftKey ? { kind: "redo" } : { kind: "undo" };
+  if (key === "y") return { kind: "redo" };
+  return null;
 }

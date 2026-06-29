@@ -1,11 +1,12 @@
 # Roadmap
 
-## Status at a glance (v0.6.0)
+## Status at a glance (v0.8.0)
 
 All of **Tier 1** (clinical table-stakes) and most of **Tier 2** (differentiators)
-have shipped. The remaining gaps are: DICOM-SEG WebGL labelmap rendering (parsing
-is done), DICOM-SR Part-10 encoding + STOW-RS upload (SR generation is done), the
-`npm create orbidicom` scaffolder (stub today), and **Tier 3** AI assist. Details
+have shipped — including annotation undo/redo, key-image flagging, DICOM-SR Part-10
+encoding + STOW-RS upload, and read-only DICOM-SEG labelmap rendering (2D stack). The
+remaining gaps are: real-browser QA of SEG rendering (then MPR/volume labelmaps +
+brush/threshold edit) and the `npm create orbidicom` scaffolder (stub today). Details
 per item below.
 
 ## Now (v1.x) — clean, embeddable 2D viewer
@@ -14,12 +15,12 @@ per item below.
   length/angle/bidirectional/ROIs/probe, cine, grids, series rail)
 - `DataSource` interface + DICOMweb / local-files / NIfTI / DICOM-JSON adapters; pluggable auth
 - Theming, i18n, and `npx orbidicom` — _shipped_. A `npm create orbidicom` scaffolder
-  and the optional `orbidicom ai` command are _planned_ (a stub today; see Tier 3)
+  is _planned_ (a stub today)
 
 ## Next
 
 Sequenced against OHIF's feature breadth, but scoped to keep OrbiDICOM thin, embeddable,
-and offline-capable. Tier 1 closes the highest-value clinical gaps; Tier 2/3 are the
+and offline-capable. Tier 1 closes the highest-value clinical gaps; Tier 2 holds the
 differentiators.
 
 ### Tier 1 — clinical table-stakes (in progress)
@@ -41,8 +42,9 @@ differentiators.
 - [x] **Measurement export** — `collectMeasurements` + JSON/CSV export of Length/Angle/ROI/
       Probe from the toolbar. _Shipped._ **DICOM-SR generation** now ships too —
       `buildMeasurementSr` (`core/src/sr/to-json.ts`) turns the measurements into a Comprehensive
-      SR (TID-1500-flavored, DICOM-JSON) that round-trips through the SR reader. _Encoding to
-      Part-10 (dcmjs) for STOW-RS upload is the remaining host-side step._
+      SR (TID-1500-flavored, DICOM-JSON) that round-trips through the SR reader. _Part-10
+      encoding (`dicomJsonToPart10`, a dependency-free Explicit-VR-LE writer) + STOW-RS upload
+      now ship too — via a capability-gated "Upload SR" button._
 
 ### Tier 2 — differentiators that fit the thin + pluggable identity
 
@@ -53,13 +55,16 @@ differentiators.
 - [x] **Hanging protocols (lightweight)** — `applyHangingProtocol` maps a study's series onto the
       grid (built-ins: `single`, `grid`; custom functions supported); the `<Viewer>`
       `hanging-protocol` prop applies one on load. _Shipped._
-- [ ] **DICOM-SEG display** — labelmap rendering (read-only first), then brush/threshold edit.
-      _Read-only **parsing** shipped (`core/src/seg/parse.ts`): SOP-class detection, segment
-      definitions (labels, property codes, Recommended-Display-CIELab → sRGB colors), per-frame
-      → segment/source-image mapping, BINARY bitstream decode, and labelmap assembly
-      (`buildSegLabelmaps` → one segment-number raster per source image); plus DICOMweb discovery
-      (`listSegmentations`, SEG routed out of the image stack). Remaining: the WebGL labelmap
-      actor (Cornerstone3D) + real-browser QA, then brush/threshold edit._
+- [~] **DICOM-SEG display** — read-only labelmap rendering (2D stack). _Parsing shipped
+  (`core/src/seg/parse.ts`): SOP-class detection, segment definitions (labels, property
+  codes, Recommended-Display-CIELab → sRGB colors), per-frame → segment/source-image
+  mapping, BINARY bitstream decode, labelmap assembly. **Rendering now shipped too**:
+  `DataSource.getSegmentation` fetches + decodes a SEG into per-image labelmaps
+  (`DicomWebDataSource` via WADO-RS bulkdata), `seg/align.ts` maps them to the stack, and
+  `cornerstone/seg.ts` draws them as a Cornerstone stack labelmap (`StackHandle.show/hide
+    Segmentation`) with per-segment colors; a "Segmentations" sidebar toggles each on/off.
+  **Pending real-browser QA** — see `docs/seg-rendering-qa.md`. Remaining: MPR/volume
+  labelmaps + brush/threshold edit._
 - [x] **More data sources** — STOW-RS upload (`DicomWebDataSource.storeInstances`, multipart/
       related) and an in-memory **DICOM-JSON** `DataSource` shipped; both additive, no UI
       branching. _DIMSE / cloud adapters still need a server-side bridge / external SDKs._
@@ -68,14 +73,9 @@ differentiators.
       accession/modality filter form → results table that emits `open(studyInstanceUID)`. RTL-aware,
       capability-gated. _Shipped._
 
-### Tier 3 — AI (the real differentiator)
-
-1. **Wire the `ai` CLI command** (currently a stub) — AI-assisted measurement, auto-W/L,
-   report drafting from SR, or natural-language study navigation.
-
 ### Quick wins (anytime)
 
-- Light theme, key-image flagging, annotation undo/redo, colormaps/LUTs for PET/MR.
+- Key-image flagging, annotation undo/redo.
 - [x] **20 UI languages + searchable switcher** — en · tr · de · es · fr · it · pt · ru ·
       zh · ja · ko · hi · id · nl · pl · ar · fa · bn · vi · uk, with a filterable language
       picker. The right-to-left locales (Arabic, Persian) mirror the viewer via a `dir`

@@ -11,12 +11,19 @@ import type {
   StudyQuery,
   StoreResult,
   SegmentationInstance,
+  SegmentationData,
 } from "../datasource";
 import type { AuthStrategy } from "../auth";
 import { authHeaders } from "../auth";
 import { buildWadoRsImageId } from "../imageIds";
 import { srTreeFromJson } from "../sr/from-json";
-import { isSegmentation, parseSeg } from "../seg/parse";
+import {
+  isSegmentation,
+  parseSeg,
+  mapFramesToSegments,
+  unpackBinarySegmentationFrames,
+  buildSegLabelmaps,
+} from "../seg/parse";
 
 const TAG = {
   SERIES_UID: "0020000E",
@@ -29,6 +36,7 @@ const TAG = {
   NUMBER_OF_FRAMES: "00280008",
   INSTANCE_NUMBER: "00200013",
   ROWS: "00280010",
+  PIXEL_DATA: "7FE00010",
   ENCAPSULATED_DOCUMENT: "00420011",
   CONTENT_SEQUENCE: "0040A730", // SR document root content
   CONTENT_LABEL: "00700080",
@@ -128,6 +136,9 @@ export class DicomWebDataSource implements DataSource {
     { sopUid: string; instanceNumber: number; modality: string; meta: Record<string, unknown> }[]
   >();
   private segsBySeries = new Map<string, SegmentationInstance[]>();
+  // Full SEG instance metadata (per-frame groups + dims + PixelData BulkDataURI),
+  // cached during getImageIds so getSegmentation needs no second metadata fetch.
+  private segMetaBySop = new Map<string, Record<string, unknown>>();
   private fetchFn: typeof fetch;
   private headers: Record<string, string>;
   // Cookie auth rides on credentials; otherwise stay same-origin.
@@ -275,6 +286,7 @@ export class DicomWebDataSource implements DataSource {
           segmentCount: info.segments.length,
           referencedSeriesUid: info.referencedSeriesUid,
         });
+        this.segMetaBySop.set(sopUid, meta);
         continue;
       }
       // A Structured Report: its Content Sequence is already inline in this
@@ -310,6 +322,41 @@ export class DicomWebDataSource implements DataSource {
   /** DICOM-SEG segmentations found during the last {@link getImageIds} for this series. */
   listSegmentations(series: SeriesSummary): SegmentationInstance[] {
     return this.segsBySeries.get(series.seriesInstanceUID) ?? [];
+  }
+
+  /**
+   * Fetch and decode a SEG into segment definitions + per-source-image labelmaps.
+   * Uses the metadata cached during {@link getImageIds} (per-frame groups, dims) and
+   * fetches only the packed PixelData bitstream via its BulkDataURI. BINARY SEGs only.
+   */
+  async getSegmentation(
+    series: SeriesSummary,
+    seg: SegmentationInstance,
+  ): Promise<SegmentationData> {
+    void series;
+    const meta = this.segMetaBySop.get(seg.sopUid);
+    if (!meta) throw new Error(`DicomWebDataSource: no SEG metadata for SOP ${seg.sopUid}`);
+    const info = parseSeg(meta);
+    const frameMap = mapFramesToSegments(meta);
+    const pd = meta[TAG.PIXEL_DATA] as { BulkDataURI?: string } | undefined;
+    if (!pd?.BulkDataURI) throw new Error(`SEG ${seg.sopUid} has no PixelData BulkDataURI`);
+
+    const res = await this.fetchFn(proxyBulkUrl(this.root, pd.BulkDataURI), {
+      credentials: this.credentials,
+      headers: { Accept: 'multipart/related; type="application/octet-stream"', ...this.headers },
+    });
+    if (!res.ok) throw new Error(`SEG pixel-data fetch failed: ${res.status}`);
+    const payload = extractBulkPayload(
+      await res.arrayBuffer(),
+      res.headers.get("Content-Type") ?? "",
+    );
+    const masks = unpackBinarySegmentationFrames(
+      new Uint8Array(payload),
+      info.rows,
+      info.columns,
+      info.numberOfFrames,
+    );
+    return { info, labelmaps: buildSegLabelmaps(info, masks, frameMap) };
   }
 
   /** Encapsulated PDFs found during the last {@link getImageIds} for this series. */

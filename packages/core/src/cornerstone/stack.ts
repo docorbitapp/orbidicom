@@ -1,7 +1,9 @@
-import { RenderingEngine, Enums, eventTarget, cache } from "@cornerstonejs/core";
+import { RenderingEngine, Enums, eventTarget, cache, metaData } from "@cornerstonejs/core";
 import { ToolGroupManager, utilities as csToolsUtils, annotation } from "@cornerstonejs/tools";
 import { TOOL_GROUP_ID } from "./init";
 import { voiToWl, nextFrame, compositeSliceJpeg, type WindowLevel } from "./capture";
+import { renderSegmentation, removeSegmentationFromViewport } from "./seg";
+import type { SegmentationData } from "../datasource";
 
 export type { WindowLevel };
 
@@ -37,6 +39,19 @@ export interface StackHandle {
   flipH: () => void;
   reset: () => void;
   clearAnnotations: () => void;
+  /**
+   * Re-render the annotation SVG overlay for this viewport after the global
+   * annotation state changed elsewhere (e.g. an undo/redo). State is global; the
+   * overlay only updates when a render is triggered for this element.
+   */
+  refreshAnnotations: () => void;
+  /**
+   * Draw a decoded DICOM-SEG as a labelmap over this stack. Resolves to false (a
+   * no-op) if none of the SEG's source images are in the current stack.
+   */
+  showSegmentation: (data: SegmentationData, segmentationId: string) => Promise<boolean>;
+  /** Remove a previously-shown segmentation's labelmap from this stack. */
+  hideSegmentation: (segmentationId: string) => void;
   /**
    * Composite the active slice (rendered image + the measurement/annotation SVG
    * overlay) into an opaque JPEG Blob. Does NOT include the metadata text overlay
@@ -124,6 +139,14 @@ export function createStack(element: HTMLDivElement, cb: StackCallbacks = {}): S
   eventTarget.addEventListener(Enums.Events.VOI_MODIFIED, onVoiModified as EventListener);
   element.addEventListener(Enums.Events.IMAGE_RENDERED, onRendered as EventListener);
   eventTarget.addEventListener(Enums.Events.IMAGE_CACHE_IMAGE_ADDED, onCacheAdded as EventListener);
+
+  // Redraw the annotation SVG overlay for this viewport. The annotation *state*
+  // is global (and may have been mutated elsewhere — undo/redo, clear); the
+  // drawn overlay only updates when a render is triggered for this element.
+  const refreshAnnotationOverlay = () => {
+    csToolsUtils.triggerAnnotationRenderForViewportIds([viewportId]);
+    vp.render();
+  };
 
   return {
     async setStack(imageIds: string[]) {
@@ -215,7 +238,30 @@ export function createStack(element: HTMLDivElement, cb: StackCallbacks = {}): S
       annotation.state.removeAllAnnotations();
       // removeAllAnnotations() only clears state — the drawn measurements stay on
       // the SVG overlay until an annotation render is triggered for this element.
-      csToolsUtils.triggerAnnotationRenderForViewportIds([viewportId]);
+      refreshAnnotationOverlay();
+    },
+    refreshAnnotations() {
+      if (destroyed) return;
+      refreshAnnotationOverlay();
+    },
+    async showSegmentation(data: SegmentationData, segmentationId: string) {
+      if (destroyed) return false;
+      // Pair each current image id with its SOP Instance UID (from Cornerstone's
+      // metadata) so the labelmap rasters can be aligned to the right slices.
+      const stack = [...stackIds].map((imageId) => ({
+        imageId,
+        sopInstanceUID: String(
+          (metaData.get("sopCommonModule", imageId) as { sopInstanceUID?: string } | undefined)
+            ?.sopInstanceUID ?? "",
+        ),
+      }));
+      const drawn = await renderSegmentation({ viewportId, segmentationId, stack, data });
+      if (drawn) vp.render();
+      return drawn;
+    },
+    hideSegmentation(segmentationId: string) {
+      if (destroyed) return;
+      removeSegmentationFromViewport(viewportId, segmentationId);
       vp.render();
     },
     async captureSliceJpeg(quality = 0.95) {

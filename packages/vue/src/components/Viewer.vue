@@ -10,6 +10,11 @@
       :can-download="canDownload"
       :can-download-image="canDownloadImage"
       :can-export-measurements="canExportMeasurements"
+      :can-undo="canUndo"
+      :can-redo="canRedo"
+      :is-key-image="isCurrentKeyImage"
+      :key-image-count="keyImageCount"
+      :can-upload-sr="canUploadSr"
       :can-mpr="canMpr"
       :mpr-active="layoutMode === 'mpr'"
       @preset="applyPreset"
@@ -19,6 +24,11 @@
       @flip-h="onActive((s) => s.flipH())"
       @reset="onReset"
       @clear-annotations="confirmClearOpen = true"
+      @undo="onUndo"
+      @redo="onRedo"
+      @toggle-key-image="toggleKeyImage"
+      @export-key-images="onExportKeyImages"
+      @upload-sr="confirmUploadSrOpen = true"
       @set-layout="setLayout"
       @cycle-overlay="cycleOverlay"
       @open-meta="openMeta"
@@ -31,6 +41,18 @@
     <div class="content">
       <div class="sidebar">
         <SeriesRail :series="series" :active="seriesIdx[activeCell]" @select="selectSeries" />
+        <!-- DICOM-SEG: per-series segmentations, each toggled as a labelmap overlay. -->
+        <div v-if="segmentations.length" class="segs">
+          <div class="segs__title">{{ t("segmentations") }}</div>
+          <label v-for="sg in segmentations" :key="sg.sopUid" class="segs__item">
+            <input
+              type="checkbox"
+              :checked="shownSegs.has(sg.sopUid)"
+              @change="toggleSegmentation(sg)"
+            />
+            <span class="segs__label">{{ sg.label || sg.sopUid }}</span>
+          </label>
+        </div>
         <Controls :open="menuOpen">
           <!-- Host actions (e.g. a "New study" button) docked bottom-left. -->
           <slot name="actions" />
@@ -176,6 +198,29 @@
         </div>
       </div>
     </div>
+
+    <div v-if="confirmUploadSrOpen" class="modal" @click.self="!srUploadBusy && closeUploadSr()">
+      <div class="modal__card">
+        <p class="modal__msg">{{ srUploadMsg ?? t("confirmUploadSr") }}</p>
+        <div class="modal__actions">
+          <template v-if="srUploadMsg">
+            <button class="modal__btn" @click="closeUploadSr">{{ t("close") }}</button>
+          </template>
+          <template v-else>
+            <button class="modal__btn" :disabled="srUploadBusy" @click="closeUploadSr">
+              {{ t("cancel") }}
+            </button>
+            <button
+              class="modal__btn modal__btn--primary"
+              :disabled="srUploadBusy"
+              @click="doUploadSr"
+            >
+              {{ t("upload") }}
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 <script setup lang="ts">
@@ -195,12 +240,18 @@ import {
   readImageMetadata,
   readMetadataGroups,
   resolveHotkey,
+  resolveEditCommand,
   DEFAULT_KEYMAP,
   windowPresetsFor,
   collectMeasurements,
   measurementsToJson,
   measurementsToCsv,
+  keyImagesToJson,
+  buildMeasurementSr,
+  dicomJsonToPart10,
   onMeasurementsChanged,
+  annotationHistory,
+  startAnnotationHistory,
   createMprView,
   isVolumeCapable,
   VR_PRESETS,
@@ -219,6 +270,8 @@ import type {
   MprHandle,
   HangingProtocol,
   HangingProtocolName,
+  KeyImage,
+  SegmentationInstance,
 } from "@orbidicom/core";
 import { t, dir, getLang } from "../i18n";
 
@@ -318,6 +371,9 @@ const cellImageIds: string[][] = Array.from({ length: MAX_CELLS }, () => []);
 const tokens = fill(0);
 // Unsubscribe from the global annotation-change listener (set on mount).
 let unsubscribeMeasurements: (() => void) | null = null;
+// Annotation undo/redo: stack-change subscription + Cornerstone event wiring teardown.
+let unsubscribeHistory: (() => void) | null = null;
+let stopHistory: (() => void) | null = null;
 
 // Which cells are on screen: in single view only the focused cell shows (so it
 // fills the stage); otherwise the first `cellCount` cells. Cells beyond that are
@@ -359,6 +415,17 @@ const canExportMeasurements = computed(() => {
   void annotationVersion.value; // reactive dependency
   return canDownloadImage.value && collectMeasurements().length > 0;
 });
+// Bumped whenever the undo/redo stacks change (the controller lives outside Vue),
+// so the toolbar buttons enable/disable live.
+const historyVersion = ref(0);
+const canUndo = computed(() => {
+  void historyVersion.value;
+  return annotationHistory.canUndo();
+});
+const canRedo = computed(() => {
+  void historyVersion.value;
+  return annotationHistory.canRedo();
+});
 // Offer MPR only for a volume-capable active series (multi-slice cross-sectional).
 // Report/SR/PDF cells and short/odd series are excluded. While in MPR, stay true.
 const canMpr = computed(() => {
@@ -386,6 +453,126 @@ const onActive = (fn: (s: StackHandle) => void) => {
   const s = stacks[activeCell.value];
   if (s) fn(s);
 };
+
+// Undo/redo mutate the (global) Cornerstone annotation state inside the history
+// controller, then we redraw every live cell's overlay and nudge the export gate
+// (programmatic add/remove doesn't emit the COMPLETED/REMOVED events the gate
+// listens to — same reason doClearAnnotations bumps it).
+function refreshAllAnnotations() {
+  for (const s of stacks) s?.refreshAnnotations();
+  annotationVersion.value++;
+}
+function onUndo() {
+  if (annotationHistory.undo()) refreshAllAnnotations();
+}
+function onRedo() {
+  if (annotationHistory.redo()) refreshAllAnnotations();
+}
+
+// Key-image flagging: a session-level map of imageId -> context (image ids are
+// globally unique). Captured at flag time so export doesn't depend on what's
+// still loaded. Reset when a new series set loads (see applyInitialLayout).
+const keyImages = reactive(new Map<string, KeyImage>());
+// cellImageIds is non-reactive; bumped on (re)load so currentImageId recomputes.
+// sliceIndex/activeCell are reactive and cover scroll + cell switches.
+const imageVersion = ref(0);
+const currentImageId = computed(() => {
+  void imageVersion.value;
+  return cellImageIds[activeCell.value]?.[sliceIndex[activeCell.value]] ?? "";
+});
+const isCurrentKeyImage = computed(
+  () => !!currentImageId.value && keyImages.has(currentImageId.value),
+);
+const keyImageCount = computed(() => keyImages.size);
+
+function toggleKeyImage() {
+  const i = activeCell.value;
+  const imageId = cellImageIds[i]?.[sliceIndex[i]];
+  if (!imageId) return;
+  if (keyImages.has(imageId)) {
+    keyImages.delete(imageId);
+    return;
+  }
+  const s = series.value[seriesIdx[i]];
+  keyImages.set(imageId, {
+    imageId,
+    seriesInstanceUID: s?.seriesInstanceUID ?? "",
+    seriesDescription: s?.seriesDescription ?? "",
+    modality: s?.modality ?? "",
+    sliceIndex: sliceIndex[i],
+  });
+}
+
+function onExportKeyImages() {
+  if (!keyImages.size) return;
+  const s = series.value[seriesIdx[activeCell.value]];
+  const desc = sanitizeName(s?.seriesDescription || s?.modality || "keyimages");
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  const blob = new Blob([keyImagesToJson([...keyImages.values()])], { type: "application/json" });
+  triggerBlobDownload(blob, `${desc}_keyimages_${stamp}.json`);
+}
+
+// SR upload (STOW-RS): available when the source advertises store support and
+// there are measurements on a rendered image stack to encode.
+const confirmUploadSrOpen = ref(false);
+const srUploadBusy = ref(false);
+const srUploadMsg = ref<string | null>(null);
+const canUploadSr = computed(() => {
+  void annotationVersion.value;
+  return (
+    canDownloadImage.value &&
+    props.source.capabilities.store === true &&
+    typeof props.source.storeInstances === "function" &&
+    collectMeasurements().length > 0
+  );
+});
+function closeUploadSr() {
+  confirmUploadSrOpen.value = false;
+  srUploadMsg.value = null;
+}
+// DICOM-SEG: list the active series' segmentations and toggle each on/off as a
+// labelmap over the active cell's stack. Rendering requires a real WebGL viewport.
+const shownSegs = reactive(new Set<string>());
+const segmentations = computed<SegmentationInstance[]>(() => {
+  void imageVersion.value;
+  const s = series.value[seriesIdx[activeCell.value]];
+  return (s && props.source.listSegmentations?.(s)) || [];
+});
+async function toggleSegmentation(seg: SegmentationInstance) {
+  const stack = stacks[activeCell.value];
+  if (!stack || !props.source.getSegmentation) return;
+  const segId = `seg-${seg.sopUid}`;
+  if (shownSegs.has(seg.sopUid)) {
+    stack.hideSegmentation(segId);
+    shownSegs.delete(seg.sopUid);
+    return;
+  }
+  const s = series.value[seriesIdx[activeCell.value]];
+  if (!s) return;
+  try {
+    const data = await props.source.getSegmentation(s, seg);
+    if (await stack.showSegmentation(data, segId)) shownSegs.add(seg.sopUid);
+  } catch {
+    /* leave the toggle off — a real failure surfaces in the console/network tab */
+  }
+}
+
+async function doUploadSr() {
+  if (srUploadBusy.value) return;
+  srUploadBusy.value = true;
+  try {
+    const sr = buildMeasurementSr(collectMeasurements());
+    const part10 = dicomJsonToPart10(sr as Record<string, { vr: string; Value?: unknown[] }>);
+    const res = await props.source.storeInstances!([part10], { studyUid: activeStudyUid() });
+    srUploadMsg.value = res.failed.length
+      ? `${t("srUploadFailed")} (${res.failed.length})`
+      : t("srUploaded");
+  } catch {
+    srUploadMsg.value = t("srUploadFailed");
+  } finally {
+    srUploadBusy.value = false;
+  }
+}
 
 function ensureStack(i: number): StackHandle {
   if (!stacks[i]) {
@@ -434,6 +621,7 @@ async function loadIntoCell(i: number, si: number) {
   cellImageIds[i] = imageIds;
   sliceCount[i] = imageIds.length;
   sliceIndex[i] = 0;
+  imageVersion.value++; // cellImageIds is non-reactive; signal current-image consumers
 
   try {
     if (imageIds.length) {
@@ -608,6 +796,8 @@ const selectTool = (name: string) => {
 function doClearAnnotations() {
   confirmClearOpen.value = false;
   for (const s of stacks) s?.clearAnnotations();
+  // Clear-all is a deliberate bulk action, not an undoable step — drop the history.
+  annotationHistory.reset();
   // removeAllAnnotations() doesn't emit per-annotation events, so nudge the gate.
   annotationVersion.value++;
 }
@@ -685,6 +875,15 @@ function isTypingTarget(target: EventTarget | null): boolean {
 
 function onKeydown(e: KeyboardEvent) {
   if (isTypingTarget(e.target)) return;
+  // Undo/redo first: resolveHotkey deliberately ignores Ctrl/Cmd, so these
+  // (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl/Cmd+Y) are handled explicitly here.
+  const edit = resolveEditCommand(e);
+  if (edit) {
+    e.preventDefault();
+    if (edit.kind === "undo") onUndo();
+    else onRedo();
+    return;
+  }
   const cmd = resolveHotkey(e, keymap.value);
   if (!cmd) return;
   const applyPresetHotkey = () => {
@@ -726,6 +925,9 @@ function onKeydown(e: KeyboardEvent) {
     case "scroll":
       s?.scroll(cmd.delta);
       break;
+    case "keyImage":
+      toggleKeyImage();
+      break;
     case "preset":
       applyPresetHotkey();
       break;
@@ -736,6 +938,8 @@ function onKeydown(e: KeyboardEvent) {
 onMounted(async () => {
   window.addEventListener("keydown", onKeydown);
   unsubscribeMeasurements = onMeasurementsChanged(() => annotationVersion.value++);
+  stopHistory = startAnnotationHistory();
+  unsubscribeHistory = annotationHistory.subscribe(() => historyVersion.value++);
   await initCornerstone();
   series.value = await props.source.getSeries(props.studyUids ?? []);
   if (series.value.length) await applyInitialLayout();
@@ -744,6 +948,10 @@ onMounted(async () => {
 // Arrange the loaded series per the hanging protocol (default "single" keeps the
 // historical one-cell behavior). Loads each assigned cell; empty cells stay blank.
 async function applyInitialLayout() {
+  // A fresh series set invalidates any prior annotation history + key-image flags.
+  annotationHistory.reset();
+  keyImages.clear();
+  shownSegs.clear();
   const { cellCount: cc, assignments } = applyHangingProtocol(
     series.value,
     props.hangingProtocol ?? "single",
@@ -762,6 +970,9 @@ async function applyInitialLayout() {
 onUnmounted(() => {
   window.removeEventListener("keydown", onKeydown);
   unsubscribeMeasurements?.();
+  unsubscribeHistory?.();
+  stopHistory?.();
+  annotationHistory.reset();
   mpr?.destroy();
   mpr = null;
   for (let i = 0; i < MAX_CELLS; i++) {
@@ -802,6 +1013,34 @@ onUnmounted(() => {
   flex: 1;
   min-height: 0;
   border-right: 0;
+}
+.segs {
+  flex: none;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text);
+  max-height: 30%;
+  overflow: auto;
+}
+.segs__title {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+.segs__item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+.segs__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .stage {
   position: relative;
@@ -1176,6 +1415,15 @@ onUnmounted(() => {
 .modal__btn--danger:hover {
   background: var(--highlight-strong);
   border-color: var(--highlight-strong);
+}
+.modal__btn--primary {
+  background: var(--accent);
+  border-color: var(--accent-strong);
+  color: var(--text);
+}
+.modal__btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 @media (max-width: 640px) {
