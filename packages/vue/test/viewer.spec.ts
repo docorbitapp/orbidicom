@@ -100,6 +100,8 @@ vi.mock("@orbidicom/core", () => {
     measurementsToJson: vi.fn(() => "{}"),
     measurementsToCsv: vi.fn(() => ""),
     keyImagesToJson: vi.fn(() => "{}"),
+    buildMeasurementSr: vi.fn(() => ({})),
+    dicomJsonToPart10: vi.fn(() => new Uint8Array([1, 2, 3])),
     onMeasurementsChanged: vi.fn(() => () => {}),
     annotationHistory,
     startAnnotationHistory: vi.fn(() => () => {}),
@@ -322,6 +324,45 @@ describe("Viewer", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "k" }));
     await flushPromises();
     expect(w.find(".tbtn--keyimage").classes()).not.toContain("tbtn--active");
+  });
+
+  it("uploads measurements as a DICOM SR via STOW when the source supports store", async () => {
+    collectMeasurements.mockReturnValue([{ annotationUID: "a" } as never]);
+    const storeInstances = vi.fn().mockResolvedValue({ stored: ["1.2.3"], failed: [] });
+    const storeSource = {
+      capabilities: {
+        downloadArchive: false,
+        encapsulatedPdf: false,
+        multiStudy: false,
+        store: true,
+      },
+      getSeries: vi.fn(async () => [
+        {
+          seriesInstanceUID: "S1",
+          studyInstanceUID: "ST",
+          modality: "CT",
+          seriesDescription: "Axial",
+          numberOfFrames: 2,
+        },
+      ]),
+      getImageIds: vi.fn(async () => ["wadors:1", "wadors:2"]),
+      storeInstances,
+    };
+    try {
+      const w = mount(Viewer, { props: { source: storeSource as never, studyUids: ["ST"] } });
+      await flushPromises();
+
+      const btn = w.find(".tbtn--upload-sr");
+      expect(btn.exists()).toBe(true);
+      await btn.trigger("click"); // opens the confirm modal
+      await w.find(".modal__btn--primary").trigger("click"); // confirm upload
+      await flushPromises();
+
+      expect(storeInstances).toHaveBeenCalled();
+      expect(storeInstances.mock.calls[0][1]).toEqual({ studyUid: "ST" });
+    } finally {
+      collectMeasurements.mockReturnValue([]); // restore for other tests
+    }
   });
 
   it("downloads the active slice as a JPEG (image + annotations) with a sensible filename", async () => {

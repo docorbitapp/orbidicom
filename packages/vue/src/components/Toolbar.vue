@@ -391,6 +391,25 @@
         </button>
       </div>
     </template>
+
+    <!-- Upload the measurements as a DICOM SR to the PACS (STOW-RS). Shown only
+         when the data source advertises store support and measurements exist. -->
+    <template v-if="canUploadSr">
+      <div class="toolbar__sep" />
+      <button class="tbtn tbtn--upload-sr" :title="t('uploadSr')" @click="$emit('uploadSr')">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M12 16V4M8 8l4-4 4 4" />
+          <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+        </svg>
+      </button>
+    </template>
   </div>
 </template>
 <script setup lang="ts">
@@ -419,6 +438,8 @@ const props = defineProps<{
   isKeyImage?: boolean;
   /** How many slices are flagged as key images (badge + export gate). */
   keyImageCount?: number;
+  /** Whether measurements can be uploaded to the PACS as a DICOM SR (STOW-RS). */
+  canUploadSr?: boolean;
   /** Whether the active series can be reconstructed in 3D (adds the MPR layout). */
   canMpr?: boolean;
   /** Whether the viewer is currently in MPR mode (so the selector shows "MPR"). */
@@ -436,6 +457,7 @@ const emit = defineEmits<{
   redo: [];
   toggleKeyImage: [];
   exportKeyImages: [];
+  uploadSr: [];
   setLayout: [number | "mpr"];
   cycleOverlay: [];
   openMeta: [];

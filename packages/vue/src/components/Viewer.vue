@@ -14,6 +14,7 @@
       :can-redo="canRedo"
       :is-key-image="isCurrentKeyImage"
       :key-image-count="keyImageCount"
+      :can-upload-sr="canUploadSr"
       :can-mpr="canMpr"
       :mpr-active="layoutMode === 'mpr'"
       @preset="applyPreset"
@@ -27,6 +28,7 @@
       @redo="onRedo"
       @toggle-key-image="toggleKeyImage"
       @export-key-images="onExportKeyImages"
+      @upload-sr="confirmUploadSrOpen = true"
       @set-layout="setLayout"
       @cycle-overlay="cycleOverlay"
       @open-meta="openMeta"
@@ -184,6 +186,29 @@
         </div>
       </div>
     </div>
+
+    <div v-if="confirmUploadSrOpen" class="modal" @click.self="!srUploadBusy && closeUploadSr()">
+      <div class="modal__card">
+        <p class="modal__msg">{{ srUploadMsg ?? t("confirmUploadSr") }}</p>
+        <div class="modal__actions">
+          <template v-if="srUploadMsg">
+            <button class="modal__btn" @click="closeUploadSr">{{ t("close") }}</button>
+          </template>
+          <template v-else>
+            <button class="modal__btn" :disabled="srUploadBusy" @click="closeUploadSr">
+              {{ t("cancel") }}
+            </button>
+            <button
+              class="modal__btn modal__btn--primary"
+              :disabled="srUploadBusy"
+              @click="doUploadSr"
+            >
+              {{ t("upload") }}
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 <script setup lang="ts">
@@ -210,6 +235,8 @@ import {
   measurementsToJson,
   measurementsToCsv,
   keyImagesToJson,
+  buildMeasurementSr,
+  dicomJsonToPart10,
   onMeasurementsChanged,
   annotationHistory,
   startAnnotationHistory,
@@ -470,6 +497,41 @@ function onExportKeyImages() {
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
   const blob = new Blob([keyImagesToJson([...keyImages.values()])], { type: "application/json" });
   triggerBlobDownload(blob, `${desc}_keyimages_${stamp}.json`);
+}
+
+// SR upload (STOW-RS): available when the source advertises store support and
+// there are measurements on a rendered image stack to encode.
+const confirmUploadSrOpen = ref(false);
+const srUploadBusy = ref(false);
+const srUploadMsg = ref<string | null>(null);
+const canUploadSr = computed(() => {
+  void annotationVersion.value;
+  return (
+    canDownloadImage.value &&
+    props.source.capabilities.store === true &&
+    typeof props.source.storeInstances === "function" &&
+    collectMeasurements().length > 0
+  );
+});
+function closeUploadSr() {
+  confirmUploadSrOpen.value = false;
+  srUploadMsg.value = null;
+}
+async function doUploadSr() {
+  if (srUploadBusy.value) return;
+  srUploadBusy.value = true;
+  try {
+    const sr = buildMeasurementSr(collectMeasurements());
+    const part10 = dicomJsonToPart10(sr as Record<string, { vr: string; Value?: unknown[] }>);
+    const res = await props.source.storeInstances!([part10], { studyUid: activeStudyUid() });
+    srUploadMsg.value = res.failed.length
+      ? `${t("srUploadFailed")} (${res.failed.length})`
+      : t("srUploaded");
+  } catch {
+    srUploadMsg.value = t("srUploadFailed");
+  } finally {
+    srUploadBusy.value = false;
+  }
 }
 
 function ensureStack(i: number): StackHandle {
@@ -1284,6 +1346,15 @@ onUnmounted(() => {
 .modal__btn--danger:hover {
   background: var(--highlight-strong);
   border-color: var(--highlight-strong);
+}
+.modal__btn--primary {
+  background: var(--accent);
+  border-color: var(--accent-strong);
+  color: var(--text);
+}
+.modal__btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 @media (max-width: 640px) {

@@ -130,6 +130,27 @@ describe("Toolbar", () => {
     expect(w.emitted("exportKeyImages")).toBeTruthy();
   });
 
+  it("shows the upload-SR button only when canUploadSr and emits uploadSr", async () => {
+    const off = mount(Toolbar, {
+      props: { modality: "CT", activeTool: "WindowLevel", layout: 1, canDownloadImage: true },
+    });
+    expect(off.find(".tbtn--upload-sr").exists()).toBe(false);
+
+    const w = mount(Toolbar, {
+      props: {
+        modality: "CT",
+        activeTool: "WindowLevel",
+        layout: 1,
+        canDownloadImage: true,
+        canUploadSr: true,
+      },
+    });
+    const btn = w.find(".tbtn--upload-sr");
+    expect(btn.exists()).toBe(true);
+    await btn.trigger("click");
+    expect(w.emitted("uploadSr")).toBeTruthy();
+  });
+
   it("emits tool when a tool button is clicked", async () => {
     const w = mount(Toolbar, {
       props: { modality: "MR", activeTool: "WindowLevel", layout: 1 },
