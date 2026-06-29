@@ -1,5 +1,14 @@
 # @orbidicom/vue
 
+## 0.7.2
+
+### Patch Changes
+
+- docs: refresh the README screenshots.
+
+- Updated dependencies []:
+  - @orbidicom/core@0.7.2
+
 ## 0.7.1
 
 ### Patch Changes

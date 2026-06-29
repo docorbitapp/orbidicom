@@ -1,5 +1,11 @@
 # @orbidicom/core
 
+## 0.7.2
+
+### Patch Changes
+
+- docs: refresh the README screenshots.
+
 ## 0.7.1
 
 ### Patch Changes
