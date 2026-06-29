@@ -5,6 +5,21 @@ multilingual DICOM viewer. Components: `Viewer`, `Toolbar`, `SeriesRail`, `MetaP
 `LangSwitcher`, `StudyList`, `Controls`, plus live i18n (20 built-in languages incl. RTL, searchable switcher) and
 CSS-variable theming.
 
+<div align="center">
+  <table>
+    <tr>
+      <td align="center" valign="top">
+        <img src="https://raw.githubusercontent.com/docorbitapp/orbidicom/main/docs/assets/desktop.png" alt="OrbiDICOM on a desktop reading station, a multi-pane DICOM viewer" width="600"><br>
+        <sub><b>Desktop</b>: multi-pane reading station</sub>
+      </td>
+      <td align="center" valign="top">
+        <img src="https://raw.githubusercontent.com/docorbitapp/orbidicom/main/docs/assets/mobile.png" alt="OrbiDICOM on a phone: the same viewer, mobile-first" width="190"><br>
+        <sub><b>Mobile</b>: same viewer, touch-friendly</sub>
+      </td>
+    </tr>
+  </table>
+</div>
+
 > This package ships Vue single-file components as **source**. You need a Vue 3 + bundler
 > (Vite, etc.) toolchain that can compile `.vue`/`.ts` from `node_modules`.
 

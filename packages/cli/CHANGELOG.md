@@ -1,5 +1,11 @@
 # orbidicom
 
+## 0.7.1
+
+### Patch Changes
+
+- docs: add desktop and mobile screenshots to the README and the published package READMEs.
+
 ## 0.7.0
 
 ## 0.6.1
