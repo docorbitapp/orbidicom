@@ -6,6 +6,7 @@ export * from "./hanging";
 export * from "./hotkeys";
 export * from "./imageIds";
 export * from "./presets";
+export * from "./keyimages";
 export * from "./metadata";
 export * from "./cornerstone/init";
 export * from "./cornerstone/stack";

@@ -296,6 +296,48 @@
           <path d="m21 16-5-5-4 4-2-2-4 4" />
         </svg>
       </button>
+      <!-- Flag the current slice as a key image (toggle). A badge shows the count. -->
+      <button
+        class="tbtn tbtn--keyimage"
+        :class="{ 'tbtn--active': isKeyImage }"
+        :title="withKey(t('flagKeyImage'), actionHotkey.keyImage)"
+        @click="$emit('toggleKeyImage')"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          :fill="isKeyImage ? 'currentColor' : 'none'"
+          stroke="currentColor"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17l-5.2 2.6 1-5.8L3.5 9.7l5.9-.9z" />
+        </svg>
+        <span v-if="keyImageCount" class="tbtn__badge">{{ keyImageCount }}</span>
+      </button>
+    </template>
+
+    <!-- Export the flagged key images as JSON. Hidden when there are none. -->
+    <template v-if="keyImageCount">
+      <div class="toolbar__sep" />
+      <button
+        class="tbtn tbtn--export-keyimages"
+        :title="`${t('keyImages')} (${keyImageCount})`"
+        @click="$emit('exportKeyImages')"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+          <path d="M14 3v6h6" />
+          <path d="M12 11.3l1 2 2.2.3-1.6 1.5.4 2.2-2-1.1-2 1.1.4-2.2-1.6-1.5 2.2-.3z" />
+        </svg>
+      </button>
     </template>
 
     <!-- Export the drawn measurements as JSON or CSV. Hidden when there are none. -->
@@ -373,6 +415,10 @@ const props = defineProps<{
   /** Whether there's an annotation action to undo / redo (enables the buttons). */
   canUndo?: boolean;
   canRedo?: boolean;
+  /** Whether the current slice is flagged as a key image (toggle active state). */
+  isKeyImage?: boolean;
+  /** How many slices are flagged as key images (badge + export gate). */
+  keyImageCount?: number;
   /** Whether the active series can be reconstructed in 3D (adds the MPR layout). */
   canMpr?: boolean;
   /** Whether the viewer is currently in MPR mode (so the selector shows "MPR"). */
@@ -388,6 +434,8 @@ const emit = defineEmits<{
   clearAnnotations: [];
   undo: [];
   redo: [];
+  toggleKeyImage: [];
+  exportKeyImages: [];
   setLayout: [number | "mpr"];
   cycleOverlay: [];
   openMeta: [];
@@ -501,6 +549,7 @@ for (const [key, cmd] of Object.entries(DEFAULT_KEYMAP)) {
   else if (cmd.kind === "rotate") actionHotkey.rotate = k;
   else if (cmd.kind === "flipH") actionHotkey.flipH = k;
   else if (cmd.kind === "reset") actionHotkey.reset = k;
+  else if (cmd.kind === "keyImage") actionHotkey.keyImage = k;
 }
 const withKey = (label: string, key?: string) => (key ? `${label} (${key})` : label);
 const toolTitle = (tool: { name: string; titleKey: I18nKey }) =>
@@ -576,6 +625,25 @@ const toolTitle = (tool: { name: string; titleKey: I18nKey }) =>
   color: #ffcf6b;
   background: color-mix(in srgb, #b9852a 35%, transparent);
   border-color: #b9852a;
+}
+/* Key-image count badge, pinned to the top-right of the star toggle. */
+.tbtn--keyimage {
+  position: relative;
+}
+.tbtn__badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--accent-strong);
+  color: var(--text);
+  font-size: 9px;
+  line-height: 14px;
+  text-align: center;
+  font-weight: 600;
 }
 /* W/L + grid controls render as one bordered "field" — a leading label/icon, the
    value, and a trailing chevron — so the whole control unmistakably reads as a

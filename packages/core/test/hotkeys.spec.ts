@@ -15,6 +15,11 @@ describe("resolveHotkey", () => {
     expect(resolveHotkey({ key: "0" })).toEqual({ kind: "reset" });
   });
 
+  it("maps 'k' to toggling the current slice as a key image", () => {
+    expect(resolveHotkey({ key: "k" })).toEqual({ kind: "keyImage" });
+    expect(resolveHotkey({ key: "K" })).toEqual({ kind: "keyImage" });
+  });
+
   it("maps space to cine and arrows to slice scrolling", () => {
     expect(resolveHotkey({ key: " " })).toEqual({ kind: "cine" });
     expect(resolveHotkey({ key: "ArrowRight" })).toEqual({ kind: "scroll", delta: 1 });

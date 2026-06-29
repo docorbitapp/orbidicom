@@ -24,6 +24,8 @@ export type HotkeyCommand =
   | { kind: "flipH" }
   | { kind: "reset" }
   | { kind: "cine" }
+  /** Toggle the active cell's current slice as a key image. */
+  | { kind: "keyImage" }
   | { kind: "scroll"; delta: number }
   /** Apply the Nth (0-based) window preset registered for the active modality. */
   | { kind: "preset"; index: number };
@@ -52,6 +54,8 @@ export const DEFAULT_KEYMAP: Keymap = {
   r: { kind: "rotate" },
   f: { kind: "flipH" },
   "0": { kind: "reset" },
+  // Key-image flag toggle.
+  k: { kind: "keyImage" },
   // Cine play/pause.
   " ": { kind: "cine" },
   // Slice navigation.

@@ -54,6 +54,7 @@ vi.mock("@orbidicom/core", () => {
   const DEFAULT_KEYMAP: Record<string, unknown> = {
     z: { kind: "tool", tool: "Zoom" },
     i: { kind: "invert" },
+    k: { kind: "keyImage" },
     " ": { kind: "cine" },
     ArrowRight: { kind: "scroll", delta: 1 },
     "1": { kind: "preset", index: 0 },
@@ -98,6 +99,7 @@ vi.mock("@orbidicom/core", () => {
     collectMeasurements,
     measurementsToJson: vi.fn(() => "{}"),
     measurementsToCsv: vi.fn(() => ""),
+    keyImagesToJson: vi.fn(() => "{}"),
     onMeasurementsChanged: vi.fn(() => () => {}),
     annotationHistory,
     startAnnotationHistory: vi.fn(() => () => {}),
@@ -302,6 +304,24 @@ describe("Viewer", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, shiftKey: true }));
     expect(annotationHistory.redo).toHaveBeenCalled();
     expect(annotationHistory.undo).not.toHaveBeenCalled();
+  });
+
+  it("flags the current slice as a key image with 'k' (star activates, export appears)", async () => {
+    const w = mount(Viewer, { props: { source: source as never } });
+    await flushPromises();
+    expect(w.find(".tbtn--keyimage").classes()).not.toContain("tbtn--active");
+    expect(w.find(".tbtn--export-keyimages").exists()).toBe(false);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k" }));
+    await flushPromises();
+
+    expect(w.find(".tbtn--keyimage").classes()).toContain("tbtn--active");
+    expect(w.find(".tbtn--export-keyimages").exists()).toBe(true);
+
+    // Pressing 'k' again unflags it.
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k" }));
+    await flushPromises();
+    expect(w.find(".tbtn--keyimage").classes()).not.toContain("tbtn--active");
   });
 
   it("downloads the active slice as a JPEG (image + annotations) with a sensible filename", async () => {

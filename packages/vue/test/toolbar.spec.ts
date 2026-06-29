@@ -81,6 +81,55 @@ describe("Toolbar", () => {
     expect(w.emitted("redo")).toBeTruthy();
   });
 
+  it("shows the key-image star only with an image stack, toggles active, and emits", async () => {
+    const noImage = mount(Toolbar, {
+      props: { modality: "MR", activeTool: "WindowLevel", layout: 1 },
+    });
+    expect(noImage.find(".tbtn--keyimage").exists()).toBe(false);
+
+    const w = mount(Toolbar, {
+      props: { modality: "CT", activeTool: "WindowLevel", layout: 1, canDownloadImage: true },
+    });
+    const star = w.find(".tbtn--keyimage");
+    expect(star.exists()).toBe(true);
+    expect(star.classes()).not.toContain("tbtn--active");
+    await star.trigger("click");
+    expect(w.emitted("toggleKeyImage")).toBeTruthy();
+
+    const flagged = mount(Toolbar, {
+      props: {
+        modality: "CT",
+        activeTool: "WindowLevel",
+        layout: 1,
+        canDownloadImage: true,
+        isKeyImage: true,
+      },
+    });
+    expect(flagged.find(".tbtn--keyimage").classes()).toContain("tbtn--active");
+  });
+
+  it("shows the key-image export button with a count and emits exportKeyImages", async () => {
+    const none = mount(Toolbar, {
+      props: { modality: "CT", activeTool: "WindowLevel", layout: 1, canDownloadImage: true },
+    });
+    expect(none.find(".tbtn--export-keyimages").exists()).toBe(false);
+
+    const w = mount(Toolbar, {
+      props: {
+        modality: "CT",
+        activeTool: "WindowLevel",
+        layout: 1,
+        canDownloadImage: true,
+        keyImageCount: 3,
+      },
+    });
+    const btn = w.find(".tbtn--export-keyimages");
+    expect(btn.exists()).toBe(true);
+    expect(btn.attributes("title")).toContain("3");
+    await btn.trigger("click");
+    expect(w.emitted("exportKeyImages")).toBeTruthy();
+  });
+
   it("emits tool when a tool button is clicked", async () => {
     const w = mount(Toolbar, {
       props: { modality: "MR", activeTool: "WindowLevel", layout: 1 },

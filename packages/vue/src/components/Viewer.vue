@@ -12,6 +12,8 @@
       :can-export-measurements="canExportMeasurements"
       :can-undo="canUndo"
       :can-redo="canRedo"
+      :is-key-image="isCurrentKeyImage"
+      :key-image-count="keyImageCount"
       :can-mpr="canMpr"
       :mpr-active="layoutMode === 'mpr'"
       @preset="applyPreset"
@@ -23,6 +25,8 @@
       @clear-annotations="confirmClearOpen = true"
       @undo="onUndo"
       @redo="onRedo"
+      @toggle-key-image="toggleKeyImage"
+      @export-key-images="onExportKeyImages"
       @set-layout="setLayout"
       @cycle-overlay="cycleOverlay"
       @open-meta="openMeta"
@@ -205,6 +209,7 @@ import {
   collectMeasurements,
   measurementsToJson,
   measurementsToCsv,
+  keyImagesToJson,
   onMeasurementsChanged,
   annotationHistory,
   startAnnotationHistory,
@@ -226,6 +231,7 @@ import type {
   MprHandle,
   HangingProtocol,
   HangingProtocolName,
+  KeyImage,
 } from "@orbidicom/core";
 import { t, dir, getLang } from "../i18n";
 
@@ -423,6 +429,49 @@ function onRedo() {
   if (annotationHistory.redo()) refreshAllAnnotations();
 }
 
+// Key-image flagging: a session-level map of imageId -> context (image ids are
+// globally unique). Captured at flag time so export doesn't depend on what's
+// still loaded. Reset when a new series set loads (see applyInitialLayout).
+const keyImages = reactive(new Map<string, KeyImage>());
+// cellImageIds is non-reactive; bumped on (re)load so currentImageId recomputes.
+// sliceIndex/activeCell are reactive and cover scroll + cell switches.
+const imageVersion = ref(0);
+const currentImageId = computed(() => {
+  void imageVersion.value;
+  return cellImageIds[activeCell.value]?.[sliceIndex[activeCell.value]] ?? "";
+});
+const isCurrentKeyImage = computed(
+  () => !!currentImageId.value && keyImages.has(currentImageId.value),
+);
+const keyImageCount = computed(() => keyImages.size);
+
+function toggleKeyImage() {
+  const i = activeCell.value;
+  const imageId = cellImageIds[i]?.[sliceIndex[i]];
+  if (!imageId) return;
+  if (keyImages.has(imageId)) {
+    keyImages.delete(imageId);
+    return;
+  }
+  const s = series.value[seriesIdx[i]];
+  keyImages.set(imageId, {
+    imageId,
+    seriesInstanceUID: s?.seriesInstanceUID ?? "",
+    seriesDescription: s?.seriesDescription ?? "",
+    modality: s?.modality ?? "",
+    sliceIndex: sliceIndex[i],
+  });
+}
+
+function onExportKeyImages() {
+  if (!keyImages.size) return;
+  const s = series.value[seriesIdx[activeCell.value]];
+  const desc = sanitizeName(s?.seriesDescription || s?.modality || "keyimages");
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  const blob = new Blob([keyImagesToJson([...keyImages.values()])], { type: "application/json" });
+  triggerBlobDownload(blob, `${desc}_keyimages_${stamp}.json`);
+}
+
 function ensureStack(i: number): StackHandle {
   if (!stacks[i]) {
     stacks[i] = createStack(els[i]!, {
@@ -470,6 +519,7 @@ async function loadIntoCell(i: number, si: number) {
   cellImageIds[i] = imageIds;
   sliceCount[i] = imageIds.length;
   sliceIndex[i] = 0;
+  imageVersion.value++; // cellImageIds is non-reactive; signal current-image consumers
 
   try {
     if (imageIds.length) {
@@ -773,6 +823,9 @@ function onKeydown(e: KeyboardEvent) {
     case "scroll":
       s?.scroll(cmd.delta);
       break;
+    case "keyImage":
+      toggleKeyImage();
+      break;
     case "preset":
       applyPresetHotkey();
       break;
@@ -793,8 +846,9 @@ onMounted(async () => {
 // Arrange the loaded series per the hanging protocol (default "single" keeps the
 // historical one-cell behavior). Loads each assigned cell; empty cells stay blank.
 async function applyInitialLayout() {
-  // A fresh series set invalidates any prior annotation history.
+  // A fresh series set invalidates any prior annotation history + key-image flags.
   annotationHistory.reset();
+  keyImages.clear();
   const { cellCount: cc, assignments } = applyHangingProtocol(
     series.value,
     props.hangingProtocol ?? "single",
