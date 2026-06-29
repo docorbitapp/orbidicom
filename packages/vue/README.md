@@ -32,6 +32,9 @@ CSS-variable theming.
 | ✅     | **2D viewing** — window/level, zoom, pan, slice scroll, rotate, flip, invert                                                                                |
 | ✅     | **Cine** playback — per cell, adjustable fps                                                                                                                |
 | ✅     | **Measurement tools** — length, angle, rectangle & ellipse ROI, probe                                                                                       |
+| ✅     | **Annotation undo/redo** — Ctrl/Cmd+Z · Ctrl/Cmd+Shift+Z + toolbar buttons (create & delete)                                                                |
+| ✅     | **Key-image flagging** — star toggle + count badge, `k` hotkey, JSON export                                                                                 |
+| ✅     | **DICOM-SEG segmentations** — per-series sidebar toggles, labelmap overlay (read-only, 2D stack)                                                            |
 | ✅     | **Keyboard shortcuts** — tools, transforms, slice nav, presets (remappable)                                                                                 |
 | ✅     | **W/L preset engine** — CT built-ins + modality-aware, host-extensible                                                                                      |
 | ✅     | **Grid layouts** — 1–10-up, each cell independent                                                                                                           |
@@ -43,13 +46,12 @@ CSS-variable theming.
 | ✅     | **MPR + 3D volume rendering (VR)** — tri-planar + crosshairs + VR presets (CT-Bone, MIP, …)                                                                 |
 | ✅     | **Measurement export** — JSON + CSV                                                                                                                         |
 | ✅     | **STOW-RS upload** — `storeInstances` (multipart/related)                                                                                                   |
-| 🟡     | **DICOM-SR export** — measurement SR generation (`buildMeasurementSr`); Part-10/STOW upload is the follow-up — _Tier 2_                                     |
-| 🟡     | **DICOM-SEG** — read-only segment/labelmap parsing; WebGL render needs QA — _Tier 2_                                                                        |
+| ✅     | **DICOM-SR export** — measurement SR + Part-10 encoding & STOW-RS upload (capability-gated "Upload SR" button)                                              |
+| 🟡     | **DICOM-SEG** — read-only labelmap rendering (2D stack); browser QA pending, MPR/edit next — _Tier 2_                                                       |
 | ✅     | **Hanging protocols** — `single` / `grid` built-ins + custom; `hanging-protocol` prop                                                                       |
 | 🟡     | **More data sources** — STOW-RS + DICOM-JSON shipped; DIMSE/cloud need a bridge — _Tier 2_                                                                  |
 | ✅     | **Study list / worklist** — QIDO-RS `searchStudies` + a `<StudyList>` filter/results component                                                              |
 | ✅     | **Plugin SDK** — `registerPlugin` (tools / presets / data sources) + data-source factory registry                                                           |
-| ⬜     | **AI assist** — `orbidicom ai` — _Tier 3_                                                                                                                   |
 
 ## Install
 

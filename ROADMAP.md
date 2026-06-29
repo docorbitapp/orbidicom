@@ -1,11 +1,13 @@
 # Roadmap
 
-## Status at a glance (v0.6.0)
+## Status at a glance (v0.8.0)
 
 All of **Tier 1** (clinical table-stakes) and most of **Tier 2** (differentiators)
-have shipped. The remaining gaps are: DICOM-SEG WebGL labelmap rendering (parsing
-is done), DICOM-SR Part-10 encoding + STOW-RS upload (SR generation is done), and the
-`npm create orbidicom` scaffolder (stub today). Details per item below.
+have shipped — including annotation undo/redo, key-image flagging, DICOM-SR Part-10
+encoding + STOW-RS upload, and read-only DICOM-SEG labelmap rendering (2D stack). The
+remaining gaps are: real-browser QA of SEG rendering (then MPR/volume labelmaps +
+brush/threshold edit) and the `npm create orbidicom` scaffolder (stub today). Details
+per item below.
 
 ## Now (v1.x) — clean, embeddable 2D viewer
 
@@ -40,8 +42,9 @@ differentiators.
 - [x] **Measurement export** — `collectMeasurements` + JSON/CSV export of Length/Angle/ROI/
       Probe from the toolbar. _Shipped._ **DICOM-SR generation** now ships too —
       `buildMeasurementSr` (`core/src/sr/to-json.ts`) turns the measurements into a Comprehensive
-      SR (TID-1500-flavored, DICOM-JSON) that round-trips through the SR reader. _Encoding to
-      Part-10 (dcmjs) for STOW-RS upload is the remaining host-side step._
+      SR (TID-1500-flavored, DICOM-JSON) that round-trips through the SR reader. _Part-10
+      encoding (`dicomJsonToPart10`, a dependency-free Explicit-VR-LE writer) + STOW-RS upload
+      now ship too — via a capability-gated "Upload SR" button._
 
 ### Tier 2 — differentiators that fit the thin + pluggable identity
 
@@ -53,15 +56,15 @@ differentiators.
       grid (built-ins: `single`, `grid`; custom functions supported); the `<Viewer>`
       `hanging-protocol` prop applies one on load. _Shipped._
 - [~] **DICOM-SEG display** — read-only labelmap rendering (2D stack). _Parsing shipped
-      (`core/src/seg/parse.ts`): SOP-class detection, segment definitions (labels, property
-      codes, Recommended-Display-CIELab → sRGB colors), per-frame → segment/source-image
-      mapping, BINARY bitstream decode, labelmap assembly. **Rendering now shipped too**:
-      `DataSource.getSegmentation` fetches + decodes a SEG into per-image labelmaps
-      (`DicomWebDataSource` via WADO-RS bulkdata), `seg/align.ts` maps them to the stack, and
-      `cornerstone/seg.ts` draws them as a Cornerstone stack labelmap (`StackHandle.show/hide
-      Segmentation`) with per-segment colors; a "Segmentations" sidebar toggles each on/off.
-      **Pending real-browser QA** — see `docs/seg-rendering-qa.md`. Remaining: MPR/volume
-      labelmaps + brush/threshold edit._
+  (`core/src/seg/parse.ts`): SOP-class detection, segment definitions (labels, property
+  codes, Recommended-Display-CIELab → sRGB colors), per-frame → segment/source-image
+  mapping, BINARY bitstream decode, labelmap assembly. **Rendering now shipped too**:
+  `DataSource.getSegmentation` fetches + decodes a SEG into per-image labelmaps
+  (`DicomWebDataSource` via WADO-RS bulkdata), `seg/align.ts` maps them to the stack, and
+  `cornerstone/seg.ts` draws them as a Cornerstone stack labelmap (`StackHandle.show/hide
+    Segmentation`) with per-segment colors; a "Segmentations" sidebar toggles each on/off.
+  **Pending real-browser QA** — see `docs/seg-rendering-qa.md`. Remaining: MPR/volume
+  labelmaps + brush/threshold edit._
 - [x] **More data sources** — STOW-RS upload (`DicomWebDataSource.storeInstances`, multipart/
       related) and an in-memory **DICOM-JSON** `DataSource` shipped; both additive, no UI
       branching. _DIMSE / cloud adapters still need a server-side bridge / external SDKs._
