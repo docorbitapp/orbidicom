@@ -11,6 +11,7 @@ export * from "./cornerstone/init";
 export * from "./cornerstone/stack";
 export * from "./cornerstone/mpr";
 export * from "./cornerstone/measurements";
+export * from "./cornerstone/annotation-history";
 export * from "./datasources/dicomweb";
 export * from "./datasources/local";
 export * from "./datasources/nifti";

@@ -63,6 +63,24 @@ describe("Toolbar", () => {
     expect(w.emitted("exportMeasurements")).toEqual([["json"], ["csv"]]);
   });
 
+  it("emits undo/redo from their buttons, disabled until canUndo/canRedo", async () => {
+    const off = mount(Toolbar, {
+      props: { modality: "MR", activeTool: "WindowLevel", layout: 1 },
+    });
+    expect(off.find(".tbtn--undo").attributes("disabled")).toBeDefined();
+    expect(off.find(".tbtn--redo").attributes("disabled")).toBeDefined();
+
+    const w = mount(Toolbar, {
+      props: { modality: "MR", activeTool: "WindowLevel", layout: 1, canUndo: true, canRedo: true },
+    });
+    expect(w.find(".tbtn--undo").attributes("disabled")).toBeUndefined();
+    expect(w.find(".tbtn--redo").attributes("disabled")).toBeUndefined();
+    await w.find(".tbtn--undo").trigger("click");
+    await w.find(".tbtn--redo").trigger("click");
+    expect(w.emitted("undo")).toBeTruthy();
+    expect(w.emitted("redo")).toBeTruthy();
+  });
+
   it("emits tool when a tool button is clicked", async () => {
     const w = mount(Toolbar, {
       props: { modality: "MR", activeTool: "WindowLevel", layout: 1 },

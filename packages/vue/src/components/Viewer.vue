@@ -10,6 +10,8 @@
       :can-download="canDownload"
       :can-download-image="canDownloadImage"
       :can-export-measurements="canExportMeasurements"
+      :can-undo="canUndo"
+      :can-redo="canRedo"
       :can-mpr="canMpr"
       :mpr-active="layoutMode === 'mpr'"
       @preset="applyPreset"
@@ -19,6 +21,8 @@
       @flip-h="onActive((s) => s.flipH())"
       @reset="onReset"
       @clear-annotations="confirmClearOpen = true"
+      @undo="onUndo"
+      @redo="onRedo"
       @set-layout="setLayout"
       @cycle-overlay="cycleOverlay"
       @open-meta="openMeta"
@@ -195,12 +199,15 @@ import {
   readImageMetadata,
   readMetadataGroups,
   resolveHotkey,
+  resolveEditCommand,
   DEFAULT_KEYMAP,
   windowPresetsFor,
   collectMeasurements,
   measurementsToJson,
   measurementsToCsv,
   onMeasurementsChanged,
+  annotationHistory,
+  startAnnotationHistory,
   createMprView,
   isVolumeCapable,
   VR_PRESETS,
@@ -318,6 +325,9 @@ const cellImageIds: string[][] = Array.from({ length: MAX_CELLS }, () => []);
 const tokens = fill(0);
 // Unsubscribe from the global annotation-change listener (set on mount).
 let unsubscribeMeasurements: (() => void) | null = null;
+// Annotation undo/redo: stack-change subscription + Cornerstone event wiring teardown.
+let unsubscribeHistory: (() => void) | null = null;
+let stopHistory: (() => void) | null = null;
 
 // Which cells are on screen: in single view only the focused cell shows (so it
 // fills the stage); otherwise the first `cellCount` cells. Cells beyond that are
@@ -359,6 +369,17 @@ const canExportMeasurements = computed(() => {
   void annotationVersion.value; // reactive dependency
   return canDownloadImage.value && collectMeasurements().length > 0;
 });
+// Bumped whenever the undo/redo stacks change (the controller lives outside Vue),
+// so the toolbar buttons enable/disable live.
+const historyVersion = ref(0);
+const canUndo = computed(() => {
+  void historyVersion.value;
+  return annotationHistory.canUndo();
+});
+const canRedo = computed(() => {
+  void historyVersion.value;
+  return annotationHistory.canRedo();
+});
 // Offer MPR only for a volume-capable active series (multi-slice cross-sectional).
 // Report/SR/PDF cells and short/odd series are excluded. While in MPR, stay true.
 const canMpr = computed(() => {
@@ -386,6 +407,21 @@ const onActive = (fn: (s: StackHandle) => void) => {
   const s = stacks[activeCell.value];
   if (s) fn(s);
 };
+
+// Undo/redo mutate the (global) Cornerstone annotation state inside the history
+// controller, then we redraw every live cell's overlay and nudge the export gate
+// (programmatic add/remove doesn't emit the COMPLETED/REMOVED events the gate
+// listens to — same reason doClearAnnotations bumps it).
+function refreshAllAnnotations() {
+  for (const s of stacks) s?.refreshAnnotations();
+  annotationVersion.value++;
+}
+function onUndo() {
+  if (annotationHistory.undo()) refreshAllAnnotations();
+}
+function onRedo() {
+  if (annotationHistory.redo()) refreshAllAnnotations();
+}
 
 function ensureStack(i: number): StackHandle {
   if (!stacks[i]) {
@@ -608,6 +644,8 @@ const selectTool = (name: string) => {
 function doClearAnnotations() {
   confirmClearOpen.value = false;
   for (const s of stacks) s?.clearAnnotations();
+  // Clear-all is a deliberate bulk action, not an undoable step — drop the history.
+  annotationHistory.reset();
   // removeAllAnnotations() doesn't emit per-annotation events, so nudge the gate.
   annotationVersion.value++;
 }
@@ -685,6 +723,15 @@ function isTypingTarget(target: EventTarget | null): boolean {
 
 function onKeydown(e: KeyboardEvent) {
   if (isTypingTarget(e.target)) return;
+  // Undo/redo first: resolveHotkey deliberately ignores Ctrl/Cmd, so these
+  // (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl/Cmd+Y) are handled explicitly here.
+  const edit = resolveEditCommand(e);
+  if (edit) {
+    e.preventDefault();
+    if (edit.kind === "undo") onUndo();
+    else onRedo();
+    return;
+  }
   const cmd = resolveHotkey(e, keymap.value);
   if (!cmd) return;
   const applyPresetHotkey = () => {
@@ -736,6 +783,8 @@ function onKeydown(e: KeyboardEvent) {
 onMounted(async () => {
   window.addEventListener("keydown", onKeydown);
   unsubscribeMeasurements = onMeasurementsChanged(() => annotationVersion.value++);
+  stopHistory = startAnnotationHistory();
+  unsubscribeHistory = annotationHistory.subscribe(() => historyVersion.value++);
   await initCornerstone();
   series.value = await props.source.getSeries(props.studyUids ?? []);
   if (series.value.length) await applyInitialLayout();
@@ -744,6 +793,8 @@ onMounted(async () => {
 // Arrange the loaded series per the hanging protocol (default "single" keeps the
 // historical one-cell behavior). Loads each assigned cell; empty cells stay blank.
 async function applyInitialLayout() {
+  // A fresh series set invalidates any prior annotation history.
+  annotationHistory.reset();
   const { cellCount: cc, assignments } = applyHangingProtocol(
     series.value,
     props.hangingProtocol ?? "single",
@@ -762,6 +813,9 @@ async function applyInitialLayout() {
 onUnmounted(() => {
   window.removeEventListener("keydown", onKeydown);
   unsubscribeMeasurements?.();
+  unsubscribeHistory?.();
+  stopHistory?.();
+  annotationHistory.reset();
   mpr?.destroy();
   mpr = null;
   for (let i = 0; i < MAX_CELLS; i++) {

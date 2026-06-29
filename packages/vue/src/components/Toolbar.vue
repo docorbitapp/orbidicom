@@ -53,6 +53,40 @@
         <!-- eslint-disable-next-line vue/no-v-html -- tool.icon is static, trusted SVG markup defined in this file -->
         <svg viewBox="0 0 24 24" v-html="tool.icon" />
       </button>
+      <button
+        class="tbtn tbtn--undo"
+        :disabled="!canUndo"
+        :title="withKey(t('undo'), 'Ctrl+Z')"
+        @click="$emit('undo')"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M7 7 3 11l4 4M3 11h10a6 6 0 0 1 0 12H8" />
+        </svg>
+      </button>
+      <button
+        class="tbtn tbtn--redo"
+        :disabled="!canRedo"
+        :title="withKey(t('redo'), 'Ctrl+Shift+Z')"
+        @click="$emit('redo')"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M17 7l4 4-4 4M21 11H11a6 6 0 0 0 0 12h5" />
+        </svg>
+      </button>
       <button class="tbtn" :title="t('clearMeasurements')" @click="$emit('clearAnnotations')">
         <svg
           viewBox="0 0 24 24"
@@ -336,6 +370,9 @@ const props = defineProps<{
   canDownloadImage?: boolean;
   /** Whether any measurements exist to export. */
   canExportMeasurements?: boolean;
+  /** Whether there's an annotation action to undo / redo (enables the buttons). */
+  canUndo?: boolean;
+  canRedo?: boolean;
   /** Whether the active series can be reconstructed in 3D (adds the MPR layout). */
   canMpr?: boolean;
   /** Whether the viewer is currently in MPR mode (so the selector shows "MPR"). */
@@ -349,6 +386,8 @@ const emit = defineEmits<{
   flipH: [];
   reset: [];
   clearAnnotations: [];
+  undo: [];
+  redo: [];
   setLayout: [number | "mpr"];
   cycleOverlay: [];
   openMeta: [];

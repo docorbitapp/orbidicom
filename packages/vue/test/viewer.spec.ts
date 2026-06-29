@@ -13,32 +13,42 @@ const stack = {
   flipH: vi.fn(),
   reset: vi.fn(),
   clearAnnotations: vi.fn(),
+  refreshAnnotations: vi.fn(),
   captureSliceJpeg: vi.fn().mockResolvedValue(new Blob(["x"], { type: "image/jpeg" })),
   destroy: vi.fn(),
 };
 // Hoisted so the vi.mock factory (which Vitest lifts above imports) can read them.
-const { setPrimaryTool, collectMeasurements, mprHandle, createMprView } = vi.hoisted(() => {
-  const mprHandle = {
-    setVolume: vi.fn().mockResolvedValue(undefined),
-    setWindowLevel: vi.fn(),
-    setPreset: vi.fn(),
-    reset: vi.fn(),
-    captureJpeg: vi.fn().mockResolvedValue(null),
-    destroy: vi.fn(),
-  };
-  return {
-    setPrimaryTool: vi.fn(),
-    collectMeasurements: vi.fn(() => [] as unknown[]),
-    mprHandle,
-    // Fire onReady synchronously so the viewer's mprReady gate flips (the preset
-    // picker is disabled until the volume is ready); the real handle fires it
-    // after the volume builds.
-    createMprView: vi.fn((_els: unknown, cb?: { onReady?: () => void }) => {
-      cb?.onReady?.();
-      return mprHandle;
-    }),
-  };
-});
+const { setPrimaryTool, collectMeasurements, mprHandle, createMprView, annotationHistory } =
+  vi.hoisted(() => {
+    const mprHandle = {
+      setVolume: vi.fn().mockResolvedValue(undefined),
+      setWindowLevel: vi.fn(),
+      setPreset: vi.fn(),
+      reset: vi.fn(),
+      captureJpeg: vi.fn().mockResolvedValue(null),
+      destroy: vi.fn(),
+    };
+    return {
+      setPrimaryTool: vi.fn(),
+      collectMeasurements: vi.fn(() => [] as unknown[]),
+      annotationHistory: {
+        undo: vi.fn(() => false),
+        redo: vi.fn(() => false),
+        canUndo: vi.fn(() => false),
+        canRedo: vi.fn(() => false),
+        reset: vi.fn(),
+        subscribe: vi.fn(() => () => {}),
+      },
+      mprHandle,
+      // Fire onReady synchronously so the viewer's mprReady gate flips (the preset
+      // picker is disabled until the volume is ready); the real handle fires it
+      // after the volume builds.
+      createMprView: vi.fn((_els: unknown, cb?: { onReady?: () => void }) => {
+        cb?.onReady?.();
+        return mprHandle;
+      }),
+    };
+  });
 vi.mock("@orbidicom/core", () => {
   // Minimal stand-ins for the pure hotkey helpers (the real ones live in core).
   const DEFAULT_KEYMAP: Record<string, unknown> = {
@@ -56,6 +66,19 @@ vi.mock("@orbidicom/core", () => {
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     return map[k] ?? null;
   };
+  const resolveEditCommand = (e: {
+    key: string;
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+    altKey?: boolean;
+    shiftKey?: boolean;
+  }) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return null;
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (k === "z") return e.shiftKey ? { kind: "redo" } : { kind: "undo" };
+    if (k === "y") return { kind: "redo" };
+    return null;
+  };
   return {
     initCornerstone: vi.fn().mockResolvedValue(undefined),
     setPrimaryTool,
@@ -70,11 +93,14 @@ vi.mock("@orbidicom/core", () => {
         ? [{ modality: "CT", name: "Soft Tissue", windowWidth: 400, windowCenter: 40 }]
         : [],
     resolveHotkey,
+    resolveEditCommand,
     DEFAULT_KEYMAP,
     collectMeasurements,
     measurementsToJson: vi.fn(() => "{}"),
     measurementsToCsv: vi.fn(() => ""),
     onMeasurementsChanged: vi.fn(() => () => {}),
+    annotationHistory,
+    startAnnotationHistory: vi.fn(() => () => {}),
     createMprView,
     isVolumeCapable: (_s: unknown, n: number) => n >= 16,
     // Honors a custom protocol function; any built-in name defaults to single view.
@@ -248,12 +274,34 @@ describe("Viewer", () => {
     expect(stack.setWindowLevel).toHaveBeenCalledWith(400, 40);
   });
 
-  it("ignores shortcuts modified with Ctrl/Cmd (browser shortcuts pass through)", async () => {
+  it("ignores non-undo shortcuts modified with Ctrl/Cmd (browser shortcuts pass through)", async () => {
     setPrimaryTool.mockClear();
+    stack.invert.mockClear();
     mount(Viewer, { props: { source: source as never } });
     await flushPromises();
+    // Ctrl+I is a browser/OS combo, not one of ours — invert must not fire.
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "i", ctrlKey: true }));
+    expect(stack.invert).not.toHaveBeenCalled();
+  });
+
+  it("maps Ctrl+Z to undo and Ctrl+Shift+Z to redo (and refreshes overlays)", async () => {
+    annotationHistory.undo.mockClear().mockReturnValue(true);
+    annotationHistory.redo.mockClear().mockReturnValue(true);
+    stack.refreshAnnotations.mockClear();
+    mount(Viewer, { props: { source: source as never } });
+    await flushPromises();
+
+    // (Prior tests leave Viewers mounted on the shared window listener, so assert
+    // the command mapping rather than exact call counts.)
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true }));
-    expect(setPrimaryTool).not.toHaveBeenCalled();
+    expect(annotationHistory.undo).toHaveBeenCalled();
+    expect(annotationHistory.redo).not.toHaveBeenCalled();
+    expect(stack.refreshAnnotations).toHaveBeenCalled();
+
+    annotationHistory.undo.mockClear();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, shiftKey: true }));
+    expect(annotationHistory.redo).toHaveBeenCalled();
+    expect(annotationHistory.undo).not.toHaveBeenCalled();
   });
 
   it("downloads the active slice as a JPEG (image + annotations) with a sensible filename", async () => {
