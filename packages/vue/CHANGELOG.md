@@ -1,5 +1,14 @@
 # @orbidicom/vue
 
+## 0.8.1
+
+### Patch Changes
+
+- docs: align CLI README feature table with shipped reality — mark DICOM-SR export (Part-10 + STOW-RS upload) as shipped and correct the DICOM-SEG row to "read-only labelmap rendering (2D stack)".
+
+- Updated dependencies []:
+  - @orbidicom/core@0.8.1
+
 ## 0.8.0
 
 ### Minor Changes

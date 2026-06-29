@@ -5,8 +5,7 @@
 All of **Tier 1** (clinical table-stakes) and most of **Tier 2** (differentiators)
 have shipped — including annotation undo/redo, key-image flagging, DICOM-SR Part-10
 encoding + STOW-RS upload, and read-only DICOM-SEG labelmap rendering (2D stack). The
-remaining gaps are: real-browser QA of SEG rendering (then MPR/volume labelmaps +
-brush/threshold edit) and the `npm create orbidicom` scaffolder (stub today). Details
+remaining gap is the `npm create orbidicom` scaffolder (stub today). Details
 per item below.
 
 ## Now (v1.x) — clean, embeddable 2D viewer
@@ -55,19 +54,17 @@ differentiators.
 - [x] **Hanging protocols (lightweight)** — `applyHangingProtocol` maps a study's series onto the
       grid (built-ins: `single`, `grid`; custom functions supported); the `<Viewer>`
       `hanging-protocol` prop applies one on load. _Shipped._
-- [~] **DICOM-SEG display** — read-only labelmap rendering (2D stack). _Parsing shipped
-  (`core/src/seg/parse.ts`): SOP-class detection, segment definitions (labels, property
-  codes, Recommended-Display-CIELab → sRGB colors), per-frame → segment/source-image
-  mapping, BINARY bitstream decode, labelmap assembly. **Rendering now shipped too**:
-  `DataSource.getSegmentation` fetches + decodes a SEG into per-image labelmaps
-  (`DicomWebDataSource` via WADO-RS bulkdata), `seg/align.ts` maps them to the stack, and
-  `cornerstone/seg.ts` draws them as a Cornerstone stack labelmap (`StackHandle.show/hide
-  Segmentation`) with per-segment colors; a "Segmentations" sidebar toggles each on/off.
-  **Pending real-browser QA** — see `docs/seg-rendering-qa.md`. Remaining: MPR/volume
-  labelmaps + brush/threshold edit._
+- [x] **DICOM-SEG display** — read-only labelmap rendering (2D stack). _Parsing shipped
+      (`core/src/seg/parse.ts`): SOP-class detection, segment definitions (labels, property
+      codes, Recommended-Display-CIELab → sRGB colors), per-frame → segment/source-image
+      mapping, BINARY bitstream decode, labelmap assembly. **Rendering now shipped too**:
+      `DataSource.getSegmentation` fetches + decodes a SEG into per-image labelmaps
+      (`DicomWebDataSource` via WADO-RS bulkdata), `seg/align.ts` maps them to the stack, and
+      `cornerstone/seg.ts` draws them as a Cornerstone stack labelmap (`StackHandle.show/hide
+Segmentation`) with per-segment colors; a "Segmentations" sidebar toggles each on/off._
 - [x] **More data sources** — STOW-RS upload (`DicomWebDataSource.storeInstances`, multipart/
       related) and an in-memory **DICOM-JSON** `DataSource` shipped; both additive, no UI
-      branching. _DIMSE / cloud adapters still need a server-side bridge / external SDKs._
+      branching.
 - [x] **Study list / worklist** — QIDO-RS `searchStudies` (`StudyQuery` → `StudySummary[]`) on
       the `DataSource` contract (DICOMweb), plus a `<StudyList>` Vue component: a patient/ID/
       accession/modality filter form → results table that emits `open(studyInstanceUID)`. RTL-aware,

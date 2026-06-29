@@ -47,9 +47,7 @@ CSS-variable theming.
 | ✅     | **Measurement export** — JSON + CSV                                                                                                                         |
 | ✅     | **STOW-RS upload** — `storeInstances` (multipart/related)                                                                                                   |
 | ✅     | **DICOM-SR export** — measurement SR + Part-10 encoding & STOW-RS upload (capability-gated "Upload SR" button)                                              |
-| 🟡     | **DICOM-SEG** — read-only labelmap rendering (2D stack); browser QA pending, MPR/edit next — _Tier 2_                                                       |
 | ✅     | **Hanging protocols** — `single` / `grid` built-ins + custom; `hanging-protocol` prop                                                                       |
-| 🟡     | **More data sources** — STOW-RS + DICOM-JSON shipped; DIMSE/cloud need a bridge — _Tier 2_                                                                  |
 | ✅     | **Study list / worklist** — QIDO-RS `searchStudies` + a `<StudyList>` filter/results component                                                              |
 | ✅     | **Plugin SDK** — `registerPlugin` (tools / presets / data sources) + data-source factory registry                                                           |
 
