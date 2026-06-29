@@ -4,9 +4,8 @@
 
 All of **Tier 1** (clinical table-stakes) and most of **Tier 2** (differentiators)
 have shipped. The remaining gaps are: DICOM-SEG WebGL labelmap rendering (parsing
-is done), DICOM-SR Part-10 encoding + STOW-RS upload (SR generation is done), the
-`npm create orbidicom` scaffolder (stub today), and **Tier 3** AI assist. Details
-per item below.
+is done), DICOM-SR Part-10 encoding + STOW-RS upload (SR generation is done), and the
+`npm create orbidicom` scaffolder (stub today). Details per item below.
 
 ## Now (v1.x) — clean, embeddable 2D viewer
 
@@ -14,12 +13,12 @@ per item below.
   length/angle/bidirectional/ROIs/probe, cine, grids, series rail)
 - `DataSource` interface + DICOMweb / local-files / NIfTI / DICOM-JSON adapters; pluggable auth
 - Theming, i18n, and `npx orbidicom` — _shipped_. A `npm create orbidicom` scaffolder
-  and the optional `orbidicom ai` command are _planned_ (a stub today; see Tier 3)
+  is _planned_ (a stub today)
 
 ## Next
 
 Sequenced against OHIF's feature breadth, but scoped to keep OrbiDICOM thin, embeddable,
-and offline-capable. Tier 1 closes the highest-value clinical gaps; Tier 2/3 are the
+and offline-capable. Tier 1 closes the highest-value clinical gaps; Tier 2 holds the
 differentiators.
 
 ### Tier 1 — clinical table-stakes (in progress)
@@ -68,14 +67,9 @@ differentiators.
       accession/modality filter form → results table that emits `open(studyInstanceUID)`. RTL-aware,
       capability-gated. _Shipped._
 
-### Tier 3 — AI (the real differentiator)
-
-1. **Wire the `ai` CLI command** (currently a stub) — AI-assisted measurement, auto-W/L,
-   report drafting from SR, or natural-language study navigation.
-
 ### Quick wins (anytime)
 
-- Light theme, key-image flagging, annotation undo/redo, colormaps/LUTs for PET/MR.
+- Key-image flagging, annotation undo/redo.
 - [x] **20 UI languages + searchable switcher** — en · tr · de · es · fr · it · pt · ru ·
       zh · ja · ko · hi · id · nl · pl · ar · fa · bn · vi · uk, with a filterable language
       picker. The right-to-left locales (Arabic, Persian) mirror the viewer via a `dir`
