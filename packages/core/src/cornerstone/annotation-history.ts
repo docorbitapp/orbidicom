@@ -33,13 +33,26 @@ export interface AnnotationStateAdapter {
 
 type Entry =
   | { kind: "create"; uid: string; group: string; snapshot?: HistoryAnnotation }
-  | { kind: "delete"; uid: string; group: string; snapshot: HistoryAnnotation };
+  | { kind: "delete"; uid: string; group: string; snapshot: HistoryAnnotation }
+  | {
+      kind: "edit";
+      uid: string;
+      group: string;
+      before: HistoryAnnotation;
+      after: HistoryAnnotation;
+    };
 
 export interface AnnotationHistory {
   /** Record that the user drew a new annotation (called from the COMPLETED listener). */
   recordCreate(uid: string, groupSelector: string): void;
   /** Record that the user deleted an annotation (called from the REMOVED listener). */
   recordDelete(annotation: HistoryAnnotation): void;
+  /** Capture the pre-edit snapshot for a move/resize gesture (idempotent within a gesture). */
+  beginEdit(uid: string): void;
+  /** Commit a gesture: push one `edit` step iff the annotation's geometry changed. */
+  commitEdit(uid: string): void;
+  /** Wiring entry point: call once per ANNOTATION_MODIFIED. Captures "before" and (re)arms the idle timer. */
+  noteModified(annotation: HistoryAnnotation): void;
   /** Undo the most recent action; returns false if there's nothing to undo. */
   undo(): boolean;
   /** Redo the most recently undone action; returns false if there's nothing to redo. */
@@ -52,8 +65,20 @@ export interface AnnotationHistory {
   subscribe(cb: () => void): () => void;
 }
 
+/** Tunables for {@link createAnnotationHistory}; the scheduler is injectable for tests. */
+export interface AnnotationHistoryOptions {
+  /** Milliseconds of ANNOTATION_MODIFIED silence that ends an edit gesture (default 400). */
+  editIdleMs?: number;
+  /** Schedule `fn` after `ms`; returns a cancel fn. Defaults to setTimeout/clearTimeout. */
+  schedule?: (fn: () => void, ms: number) => () => void;
+}
+
 const clone = <T>(v: T): T =>
   typeof structuredClone === "function" ? structuredClone(v) : (JSON.parse(JSON.stringify(v)) as T);
+
+/** Serialized geometry (handles) of an annotation — the signal that an edit changed it. */
+const handlesKey = (a: HistoryAnnotation | undefined): string =>
+  JSON.stringify((a as { data?: { handles?: unknown } } | undefined)?.data?.handles ?? null);
 
 /**
  * Build a history controller over the given annotation-state adapter.
@@ -63,11 +88,28 @@ const clone = <T>(v: T): T =>
  * Without the guard, the REMOVED listener would record our own operation as a new
  * user delete and corrupt the stacks. While `applying` is set, recording no-ops.
  */
-export function createAnnotationHistory(adapter: AnnotationStateAdapter): AnnotationHistory {
+export function createAnnotationHistory(
+  adapter: AnnotationStateAdapter,
+  opts: AnnotationHistoryOptions = {},
+): AnnotationHistory {
   let undoStack: Entry[] = [];
   let redoStack: Entry[] = [];
   let applying = false;
   const subs = new Set<() => void>();
+  // Last *stable* (created/edited/restored) snapshot per uid, so an edit's "before"
+  // is the true pre-gesture geometry rather than a mid-drag frame.
+  const stable = new Map<string, HistoryAnnotation>();
+  // Per-uid "before" snapshots captured at gesture start, awaiting commit.
+  const pendingBefore = new Map<string, HistoryAnnotation>();
+  const editIdleMs = opts.editIdleMs ?? 400;
+  const schedule =
+    opts.schedule ??
+    ((fn: () => void, ms: number) => {
+      const id = setTimeout(fn, ms);
+      return () => clearTimeout(id);
+    });
+  // Active idle-timer cancelers, keyed by uid.
+  const cancelTimers = new Map<string, () => void>();
   const notify = () => {
     for (const cb of subs) cb();
   };
@@ -76,6 +118,8 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
     if (applying || !uid) return;
     undoStack.push({ kind: "create", uid, group: groupSelector });
     redoStack = [];
+    const live = adapter.getAnnotation(uid);
+    if (live) stable.set(uid, clone(live)); // seed pre-edit baseline
     notify();
   }
 
@@ -90,7 +134,66 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
       snapshot: clone(ann),
     });
     redoStack = [];
+    stable.delete(uid);
+    cancelPendingEdit(uid);
     notify();
+  }
+
+  function beginEdit(uid: string): void {
+    if (applying || !uid) return;
+    if (pendingBefore.has(uid)) return; // gesture already in progress
+    const before = stable.get(uid); // only capture once a committed baseline exists
+    if (!before) return;
+    pendingBefore.set(uid, clone(before));
+  }
+
+  /** Cancel any armed idle-timer and drop the captured before-snapshot for a uid. */
+  function cancelPendingEdit(uid: string): void {
+    cancelTimers.get(uid)?.();
+    cancelTimers.delete(uid);
+    pendingBefore.delete(uid);
+  }
+
+  function commitEdit(uid: string): void {
+    if (applying || !uid) return;
+    const before = pendingBefore.get(uid);
+    pendingBefore.delete(uid);
+    if (!before) return;
+    const live = adapter.getAnnotation(uid);
+    if (!live) return;
+    const after = clone(live);
+    if (handlesKey(before) === handlesKey(after)) {
+      stable.set(uid, after); // no geometry change — refresh baseline, record nothing
+      return;
+    }
+    undoStack.push({
+      kind: "edit",
+      uid,
+      group: before.metadata?.FrameOfReferenceUID ?? after.metadata?.FrameOfReferenceUID ?? "",
+      before,
+      after,
+    });
+    redoStack = [];
+    stable.set(uid, after);
+    notify();
+  }
+
+  function noteModified(ann: HistoryAnnotation): void {
+    if (applying) return;
+    const uid = ann.annotationUID ?? "";
+    // Ignore modifications until the annotation has been created (a committed baseline exists
+    // in `stable`). Cornerstone fires ANNOTATION_MODIFIED during the initial draw too; without
+    // this gate a mid-draw pause could record an edit step before the create.
+    if (!uid || !stable.has(uid)) return;
+    beginEdit(uid); // capture pre-edit baseline once per gesture
+    cancelTimers.get(uid)?.(); // re-arm on each modification
+    cancelTimers.set(
+      uid,
+      schedule(() => {
+        cancelTimers.delete(uid);
+        commitEdit(uid);
+      }, editIdleMs),
+    );
   }
 
   function apply(fn: () => void): void {
@@ -105,14 +208,21 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
   function undo(): boolean {
     const entry = undoStack.pop();
     if (!entry) return false;
+    cancelPendingEdit(entry.uid);
     apply(() => {
       if (entry.kind === "create") {
-        // Snapshot the latest state so a redo restores any edits made since drawing.
         const live = adapter.getAnnotation(entry.uid);
         if (live) entry.snapshot = clone(live);
         adapter.removeAnnotation(entry.uid);
+        stable.delete(entry.uid);
+      } else if (entry.kind === "delete") {
+        adapter.addAnnotation(clone(entry.snapshot), entry.group);
+        stable.set(entry.uid, clone(entry.snapshot));
       } else {
-        adapter.addAnnotation(entry.snapshot, entry.group);
+        // edit: restore the pre-edit snapshot (replace current state)
+        adapter.removeAnnotation(entry.uid);
+        adapter.addAnnotation(clone(entry.before), entry.group);
+        stable.set(entry.uid, clone(entry.before));
       }
     });
     redoStack.push(entry);
@@ -123,11 +233,20 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
   function redo(): boolean {
     const entry = redoStack.pop();
     if (!entry) return false;
+    cancelPendingEdit(entry.uid);
     apply(() => {
       if (entry.kind === "create") {
-        if (entry.snapshot) adapter.addAnnotation(entry.snapshot, entry.group);
+        if (entry.snapshot) {
+          adapter.addAnnotation(clone(entry.snapshot), entry.group);
+          stable.set(entry.uid, clone(entry.snapshot));
+        }
+      } else if (entry.kind === "delete") {
+        adapter.removeAnnotation(entry.uid);
+        stable.delete(entry.uid);
       } else {
         adapter.removeAnnotation(entry.uid);
+        adapter.addAnnotation(clone(entry.after), entry.group);
+        stable.set(entry.uid, clone(entry.after));
       }
     });
     undoStack.push(entry);
@@ -138,12 +257,19 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
   function reset(): void {
     undoStack = [];
     redoStack = [];
+    stable.clear();
+    pendingBefore.clear();
+    for (const cancel of cancelTimers.values()) cancel();
+    cancelTimers.clear();
     notify();
   }
 
   return {
     recordCreate,
     recordDelete,
+    beginEdit,
+    commitEdit,
+    noteModified,
     undo,
     redo,
     canUndo: () => undoStack.length > 0,
@@ -194,6 +320,11 @@ const onRemoved = (evt: Event) => {
   if (isTracked(a)) annotationHistory.recordDelete(a);
 };
 
+const onModified = (evt: Event) => {
+  const a = annotationOf(evt);
+  if (isTracked(a)) annotationHistory.noteModified(a);
+};
+
 let started = false;
 
 /**
@@ -210,6 +341,10 @@ export function startAnnotationHistory(): () => void {
       csToolsEnums.Events.ANNOTATION_REMOVED,
       onRemoved as EventListener,
     );
+    eventTarget.addEventListener(
+      csToolsEnums.Events.ANNOTATION_MODIFIED,
+      onModified as EventListener,
+    );
     started = true;
   }
   return () => {
@@ -220,6 +355,10 @@ export function startAnnotationHistory(): () => void {
     eventTarget.removeEventListener(
       csToolsEnums.Events.ANNOTATION_REMOVED,
       onRemoved as EventListener,
+    );
+    eventTarget.removeEventListener(
+      csToolsEnums.Events.ANNOTATION_MODIFIED,
+      onModified as EventListener,
     );
     started = false;
   };

@@ -1,4 +1,11 @@
-import { RenderingEngine, Enums, eventTarget, cache, metaData } from "@cornerstonejs/core";
+import {
+  RenderingEngine,
+  Enums,
+  eventTarget,
+  cache,
+  metaData,
+  type Types,
+} from "@cornerstonejs/core";
 import { ToolGroupManager, utilities as csToolsUtils, annotation } from "@cornerstonejs/tools";
 import { TOOL_GROUP_ID } from "./init";
 import { voiToWl, nextFrame, compositeSliceJpeg, type WindowLevel } from "./capture";
@@ -45,6 +52,12 @@ export interface StackHandle {
    * overlay only updates when a render is triggered for this element.
    */
   refreshAnnotations: () => void;
+  /**
+   * The live Cornerstone stack viewport for this cell. Used by the UI overlay to
+   * project annotation world coordinates to canvas pixels (worldToCanvas) and to
+   * read the current image id. Read-only use — do not mutate state through it.
+   */
+  getViewport: () => Types.IStackViewport;
   /**
    * Draw a decoded DICOM-SEG as a labelmap over this stack. Resolves to false (a
    * no-op) if none of the SEG's source images are in the current stack.
@@ -243,6 +256,9 @@ export function createStack(element: HTMLDivElement, cb: StackCallbacks = {}): S
     refreshAnnotations() {
       if (destroyed) return;
       refreshAnnotationOverlay();
+    },
+    getViewport() {
+      return vp as Types.IStackViewport;
     },
     async showSegmentation(data: SegmentationData, segmentationId: string) {
       if (destroyed) return false;

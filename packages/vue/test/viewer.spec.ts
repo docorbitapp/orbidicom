@@ -18,6 +18,7 @@ const stack = {
   hideSegmentation: vi.fn(),
   captureSliceJpeg: vi.fn().mockResolvedValue(new Blob(["x"], { type: "image/jpeg" })),
   destroy: vi.fn(),
+  getViewport: vi.fn(() => null),
 };
 // Hoisted so the vi.mock factory (which Vitest lifts above imports) can read them.
 const { setPrimaryTool, collectMeasurements, mprHandle, createMprView, annotationHistory } =
@@ -107,6 +108,9 @@ vi.mock("@orbidicom/core", () => {
     onMeasurementsChanged: vi.fn(() => () => {}),
     annotationHistory,
     startAnnotationHistory: vi.fn(() => () => {}),
+    deleteAnnotation: vi.fn(),
+    getAnnotationDeleteTargets: vi.fn(() => []),
+    subscribeOverlayReposition: vi.fn(() => () => {}),
     createMprView,
     isVolumeCapable: (_s: unknown, n: number) => n >= 16,
     // Honors a custom protocol function; any built-in name defaults to single view.
