@@ -37,8 +37,6 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@cornerstonejs/core": ">=5.0.0",
-    "@cornerstonejs/tools": ">=5.0.0",
     "vue": "^3.5.0"
   },
   "dependencies": {
@@ -46,8 +44,6 @@
     "pdfjs-dist": "^6.0.227"
   },
   "devDependencies": {
-    "@cornerstonejs/core": "5.0.13",
-    "@cornerstonejs/tools": "5.0.13",
     "@vitejs/plugin-vue": "^5.1.0",
     "@vue/test-utils": "^2.4.0",
     "jsdom": "^25.0.0",

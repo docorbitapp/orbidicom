@@ -5,14 +5,7 @@ import { mount } from "@vue/test-utils";
 const getAnnotationDeleteTargets = vi.fn();
 vi.mock("@orbidicom/core", () => ({
   getAnnotationDeleteTargets: (...args: unknown[]) => getAnnotationDeleteTargets(...args),
-}));
-// Cornerstone barrels are imported by the component for event wiring; stub them.
-vi.mock("@cornerstonejs/core", () => ({
-  eventTarget: { addEventListener: vi.fn(), removeEventListener: vi.fn() },
-  Enums: { Events: { IMAGE_RENDERED: "ir", STACK_NEW_IMAGE: "sni" } },
-}));
-vi.mock("@cornerstonejs/tools", () => ({
-  Enums: { Events: { ANNOTATION_RENDERED: "ar" } },
+  subscribeOverlayReposition: vi.fn(() => () => {}),
 }));
 
 import AnnotationOverlay from "../src/components/AnnotationOverlay.vue";
@@ -60,7 +53,7 @@ describe("AnnotationOverlay", () => {
     const w = mount(AnnotationOverlay, {
       props: { getViewport: () => vp, element: document.createElement("div"), version: 0 },
     });
-    expect(getAnnotationDeleteTargets).toHaveBeenCalledTimes(1); // onMounted
+    expect(getAnnotationDeleteTargets).toHaveBeenCalledTimes(1); // initial recompute (setup)
     getAnnotationDeleteTargets.mockReturnValue([
       { uid: "a1", toolName: "Length", canvas: { x: 1, y: 2 } },
     ]);

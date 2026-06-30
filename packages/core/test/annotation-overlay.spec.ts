@@ -7,13 +7,20 @@ const { removeAnnotation } = vi.hoisted(() => ({
 }));
 vi.mock("@cornerstonejs/tools", () => ({
   annotation: { state: { getAllAnnotations: vi.fn(() => []), removeAnnotation } },
+  Enums: { Events: { ANNOTATION_RENDERED: "ar" } },
+}));
+vi.mock("@cornerstonejs/core", () => ({
+  eventTarget: { addEventListener: vi.fn(), removeEventListener: vi.fn() },
+  Enums: { Events: { IMAGE_RENDERED: "ir", STACK_NEW_IMAGE: "sni" } },
 }));
 
 import {
   getAnnotationDeleteTargets,
   deleteAnnotation,
+  subscribeOverlayReposition,
   type OverlayAnnotation,
 } from "../src/cornerstone/annotation-overlay";
+import { eventTarget } from "@cornerstonejs/core";
 
 const vp = {
   getCurrentImageId: () => "img-1",
@@ -56,5 +63,27 @@ describe("deleteAnnotation", () => {
     removeAnnotation.mockClear();
     deleteAnnotation("");
     expect(removeAnnotation).not.toHaveBeenCalled();
+  });
+});
+
+describe("subscribeOverlayReposition", () => {
+  it("wires element + global listeners, filters by viewport id, and tears down", () => {
+    const el = { addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as HTMLElement;
+    const cb = vi.fn();
+    const teardown = subscribeOverlayReposition(el, () => "stack-0", cb);
+
+    // two element listeners (IMAGE_RENDERED, STACK_NEW_IMAGE) + one global (ANNOTATION_RENDERED)
+    expect((el.addEventListener as any).mock.calls.map((c: any[]) => c[0])).toEqual(["ir", "sni"]);
+    const annHandler = (eventTarget.addEventListener as any).mock.calls.find((c: any[]) => c[0] === "ar")[1];
+
+    annHandler({ detail: { viewportId: "stack-9" } }); // different viewport -> ignored
+    expect(cb).not.toHaveBeenCalled();
+    annHandler({ detail: { viewportId: "stack-0" } }); // our viewport -> fires
+    annHandler({ detail: {} }); // no id -> fires
+    expect(cb).toHaveBeenCalledTimes(2);
+
+    teardown();
+    expect(el.removeEventListener).toHaveBeenCalledTimes(2);
+    expect(eventTarget.removeEventListener).toHaveBeenCalledTimes(1);
   });
 });

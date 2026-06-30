@@ -6,7 +6,8 @@
  * (unguarded) path — which the annotation-history REMOVED listener records as an
  * undoable delete (see annotation-history.ts).
  */
-import { annotation } from "@cornerstonejs/tools";
+import { annotation, Enums as csToolsEnums } from "@cornerstonejs/tools";
+import { eventTarget, Enums as csEnums } from "@cornerstonejs/core";
 
 /** Mirrors the tracked set in measurements.ts / annotation-history.ts. */
 const KNOWN_TOOLS = new Set(["Length", "Angle", "RectangleROI", "EllipticalROI", "Probe"]);
@@ -65,4 +66,39 @@ export function getAnnotationDeleteTargets(
  */
 export function deleteAnnotation(uid: string): void {
   if (uid) annotation.state.removeAnnotation(uid);
+}
+
+/**
+ * Subscribe to the Cornerstone render events that should reposition a viewport's
+ * annotation overlay: the element's image renders + slice changes, and the global
+ * annotation render (filtered to this viewport). Keeping this wiring in core lets
+ * the UI layer stay Cornerstone-free. Returns a teardown fn.
+ * @param getViewportId reads the current viewport id, to filter the global event
+ */
+export function subscribeOverlayReposition(
+  element: HTMLElement,
+  getViewportId: () => string | undefined,
+  cb: () => void,
+): () => void {
+  const onElement = () => cb();
+  const onAnnotationRender = (e: Event) => {
+    const id = (e as CustomEvent).detail?.viewportId as string | undefined;
+    const ours = getViewportId();
+    if (id && ours && id !== ours) return; // a different viewport's render
+    cb();
+  };
+  element.addEventListener(csEnums.Events.IMAGE_RENDERED, onElement as EventListener);
+  element.addEventListener(csEnums.Events.STACK_NEW_IMAGE, onElement as EventListener);
+  eventTarget.addEventListener(
+    csToolsEnums.Events.ANNOTATION_RENDERED,
+    onAnnotationRender as EventListener,
+  );
+  return () => {
+    element.removeEventListener(csEnums.Events.IMAGE_RENDERED, onElement as EventListener);
+    element.removeEventListener(csEnums.Events.STACK_NEW_IMAGE, onElement as EventListener);
+    eventTarget.removeEventListener(
+      csToolsEnums.Events.ANNOTATION_RENDERED,
+      onAnnotationRender as EventListener,
+    );
+  };
 }
