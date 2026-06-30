@@ -1,4 +1,11 @@
-import { RenderingEngine, Enums, eventTarget, cache, metaData, type Types } from "@cornerstonejs/core";
+import {
+  RenderingEngine,
+  Enums,
+  eventTarget,
+  cache,
+  metaData,
+  type Types,
+} from "@cornerstonejs/core";
 import { ToolGroupManager, utilities as csToolsUtils, annotation } from "@cornerstonejs/tools";
 import { TOOL_GROUP_ID } from "./init";
 import { voiToWl, nextFrame, compositeSliceJpeg, type WindowLevel } from "./capture";

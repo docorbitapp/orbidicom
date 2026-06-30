@@ -34,7 +34,13 @@ export interface AnnotationStateAdapter {
 type Entry =
   | { kind: "create"; uid: string; group: string; snapshot?: HistoryAnnotation }
   | { kind: "delete"; uid: string; group: string; snapshot: HistoryAnnotation }
-  | { kind: "edit"; uid: string; group: string; before: HistoryAnnotation; after: HistoryAnnotation };
+  | {
+      kind: "edit";
+      uid: string;
+      group: string;
+      before: HistoryAnnotation;
+      after: HistoryAnnotation;
+    };
 
 export interface AnnotationHistory {
   /** Record that the user drew a new annotation (called from the COMPLETED listener). */
