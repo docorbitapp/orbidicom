@@ -106,6 +106,13 @@
               :series-label="cellLabel(i - 1)"
               :privacy="overlayPrivacy"
             />
+            <AnnotationOverlay
+              v-if="sliceCount[i - 1]"
+              :get-viewport="() => stacks[i - 1]?.getViewport() ?? null"
+              :element="els[i - 1]"
+              :version="annotationVersion"
+              @delete="onDeleteAnnotation"
+            />
 
             <div v-if="cellLoading[i - 1]" class="loading">
               <span class="spinner" />
@@ -232,6 +239,7 @@ import Overlay from "./Overlay.vue";
 import MetaPanel from "./MetaPanel.vue";
 import PdfView from "./PdfView.vue";
 import SrView from "./SrView.vue";
+import AnnotationOverlay from "./AnnotationOverlay.vue";
 import {
   initCornerstone,
   setPrimaryTool,
@@ -252,6 +260,7 @@ import {
   onMeasurementsChanged,
   annotationHistory,
   startAnnotationHistory,
+  deleteAnnotation,
   createMprView,
   isVolumeCapable,
   VR_PRESETS,
@@ -467,6 +476,13 @@ function onUndo() {
 }
 function onRedo() {
   if (annotationHistory.redo()) refreshAllAnnotations();
+}
+// A per-annotation × was clicked. Delete through core (recorded as an undoable
+// delete via ANNOTATION_REMOVED), then redraw every cell's overlay + nudge the
+// export/overlay gate — same path as undo/redo.
+function onDeleteAnnotation(uid: string) {
+  deleteAnnotation(uid);
+  refreshAllAnnotations();
 }
 
 // Key-image flagging: a session-level map of imageId -> context (image ids are
@@ -1160,6 +1176,10 @@ onUnmounted(() => {
 .cell--active {
   outline: 2px solid var(--highlight);
   outline-offset: -2px;
+}
+.cell:hover :deep(.cs-del-x) {
+  opacity: 1;
+  pointer-events: auto;
 }
 .cs-viewport {
   position: absolute;
