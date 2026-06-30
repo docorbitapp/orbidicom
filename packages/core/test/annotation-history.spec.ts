@@ -183,4 +183,63 @@ describe("createAnnotationHistory", () => {
     history.redo();
     expect(cb).toHaveBeenCalledTimes(2);
   });
+
+  it("records one edit step from beginEdit→commitEdit and undoes/redoes it", () => {
+    const { history, store } = setup();
+    store.set("u1", lengthAnn("u1")); // points [[0,0,0]]
+    history.recordCreate("u1", "FOR1"); // seeds the stable snapshot
+
+    history.beginEdit("u1"); // capture "before" (= [[0,0,0]])
+    store.get("u1")!.data = { handles: { points: [[5, 5, 5]] } }; // user drags
+    history.commitEdit("u1");
+
+    // edit is now the top undo step (create is beneath it)
+    expect(history.undo()).toBe(true);
+    expect(store.get("u1")!.data).toEqual({ handles: { points: [[0, 0, 0]] } });
+    expect(history.canUndo()).toBe(true); // the create remains
+
+    expect(history.redo()).toBe(true);
+    expect(store.get("u1")!.data).toEqual({ handles: { points: [[5, 5, 5]] } });
+  });
+
+  it("records no edit step when geometry did not change", () => {
+    const { history, store } = setup();
+    store.set("u1", lengthAnn("u1"));
+    history.recordCreate("u1", "FOR1");
+
+    history.beginEdit("u1");
+    history.commitEdit("u1"); // no change between before/after
+
+    history.undo(); // undoes the create…
+    expect(history.canUndo()).toBe(false); // …and there is no spurious edit beneath it
+  });
+
+  it("does not self-record while applying an edit undo (guard holds)", () => {
+    const { history, store } = setup();
+    store.set("u1", lengthAnn("u1"));
+    history.recordCreate("u1", "FOR1");
+    history.beginEdit("u1");
+    store.get("u1")!.data = { handles: { points: [[5, 5, 5]] } };
+    history.commitEdit("u1");
+
+    history.undo(); // edit undo does removeAnnotation+addAnnotation; neither may record
+
+    expect(history.canUndo()).toBe(true); // only the create is left
+    expect(history.canRedo()).toBe(true); // the edit moved to redo, nothing spurious
+  });
+
+  it("clears the redo stack when an edit is recorded", () => {
+    const { history, store } = setup();
+    store.set("u1", lengthAnn("u1"));
+    history.recordCreate("u1", "FOR1");
+    history.undo(); // create -> redo stack
+    expect(history.canRedo()).toBe(true);
+
+    store.set("u1", lengthAnn("u1")); // (re-add so an edit target exists)
+    history.beginEdit("u1");
+    store.get("u1")!.data = { handles: { points: [[7, 7, 7]] } };
+    history.commitEdit("u1"); // a new action must invalidate redo
+
+    expect(history.canRedo()).toBe(false);
+  });
 });

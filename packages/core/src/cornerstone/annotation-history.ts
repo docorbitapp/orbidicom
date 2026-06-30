@@ -33,13 +33,18 @@ export interface AnnotationStateAdapter {
 
 type Entry =
   | { kind: "create"; uid: string; group: string; snapshot?: HistoryAnnotation }
-  | { kind: "delete"; uid: string; group: string; snapshot: HistoryAnnotation };
+  | { kind: "delete"; uid: string; group: string; snapshot: HistoryAnnotation }
+  | { kind: "edit"; uid: string; group: string; before: HistoryAnnotation; after: HistoryAnnotation };
 
 export interface AnnotationHistory {
   /** Record that the user drew a new annotation (called from the COMPLETED listener). */
   recordCreate(uid: string, groupSelector: string): void;
   /** Record that the user deleted an annotation (called from the REMOVED listener). */
   recordDelete(annotation: HistoryAnnotation): void;
+  /** Capture the pre-edit snapshot for a move/resize gesture (idempotent within a gesture). */
+  beginEdit(uid: string): void;
+  /** Commit a gesture: push one `edit` step iff the annotation's geometry changed. */
+  commitEdit(uid: string): void;
   /** Undo the most recent action; returns false if there's nothing to undo. */
   undo(): boolean;
   /** Redo the most recently undone action; returns false if there's nothing to redo. */
@@ -55,6 +60,10 @@ export interface AnnotationHistory {
 const clone = <T>(v: T): T =>
   typeof structuredClone === "function" ? structuredClone(v) : (JSON.parse(JSON.stringify(v)) as T);
 
+/** Serialized geometry (handles) of an annotation — the signal that an edit changed it. */
+const handlesKey = (a: HistoryAnnotation | undefined): string =>
+  JSON.stringify((a as { data?: { handles?: unknown } } | undefined)?.data?.handles ?? null);
+
 /**
  * Build a history controller over the given annotation-state adapter.
  *
@@ -68,6 +77,11 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
   let redoStack: Entry[] = [];
   let applying = false;
   const subs = new Set<() => void>();
+  // Last *stable* (created/edited/restored) snapshot per uid, so an edit's "before"
+  // is the true pre-gesture geometry rather than a mid-drag frame.
+  const stable = new Map<string, HistoryAnnotation>();
+  // Per-uid "before" snapshots captured at gesture start, awaiting commit.
+  const pendingBefore = new Map<string, HistoryAnnotation>();
   const notify = () => {
     for (const cb of subs) cb();
   };
@@ -76,6 +90,8 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
     if (applying || !uid) return;
     undoStack.push({ kind: "create", uid, group: groupSelector });
     redoStack = [];
+    const live = adapter.getAnnotation(uid);
+    if (live) stable.set(uid, clone(live)); // seed pre-edit baseline
     notify();
   }
 
@@ -90,6 +106,39 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
       snapshot: clone(ann),
     });
     redoStack = [];
+    stable.delete(uid);
+    pendingBefore.delete(uid);
+    notify();
+  }
+
+  function beginEdit(uid: string): void {
+    if (applying || !uid) return;
+    if (pendingBefore.has(uid)) return; // gesture already in progress
+    const before = stable.get(uid) ?? adapter.getAnnotation(uid);
+    if (before) pendingBefore.set(uid, clone(before));
+  }
+
+  function commitEdit(uid: string): void {
+    if (applying || !uid) return;
+    const before = pendingBefore.get(uid);
+    pendingBefore.delete(uid);
+    if (!before) return;
+    const live = adapter.getAnnotation(uid);
+    if (!live) return;
+    const after = clone(live);
+    if (handlesKey(before) === handlesKey(after)) {
+      stable.set(uid, after); // no geometry change — refresh baseline, record nothing
+      return;
+    }
+    undoStack.push({
+      kind: "edit",
+      uid,
+      group: before.metadata?.FrameOfReferenceUID ?? after.metadata?.FrameOfReferenceUID ?? "",
+      before,
+      after,
+    });
+    redoStack = [];
+    stable.set(uid, after);
     notify();
   }
 
@@ -107,12 +156,18 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
     if (!entry) return false;
     apply(() => {
       if (entry.kind === "create") {
-        // Snapshot the latest state so a redo restores any edits made since drawing.
         const live = adapter.getAnnotation(entry.uid);
         if (live) entry.snapshot = clone(live);
         adapter.removeAnnotation(entry.uid);
-      } else {
+        stable.delete(entry.uid);
+      } else if (entry.kind === "delete") {
         adapter.addAnnotation(entry.snapshot, entry.group);
+        stable.set(entry.uid, clone(entry.snapshot));
+      } else {
+        // edit: restore the pre-edit snapshot (replace current state)
+        adapter.removeAnnotation(entry.uid);
+        adapter.addAnnotation(entry.before, entry.group);
+        stable.set(entry.uid, clone(entry.before));
       }
     });
     redoStack.push(entry);
@@ -125,9 +180,17 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
     if (!entry) return false;
     apply(() => {
       if (entry.kind === "create") {
-        if (entry.snapshot) adapter.addAnnotation(entry.snapshot, entry.group);
+        if (entry.snapshot) {
+          adapter.addAnnotation(entry.snapshot, entry.group);
+          stable.set(entry.uid, clone(entry.snapshot));
+        }
+      } else if (entry.kind === "delete") {
+        adapter.removeAnnotation(entry.uid);
+        stable.delete(entry.uid);
       } else {
         adapter.removeAnnotation(entry.uid);
+        adapter.addAnnotation(entry.after, entry.group);
+        stable.set(entry.uid, clone(entry.after));
       }
     });
     undoStack.push(entry);
@@ -138,12 +201,16 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
   function reset(): void {
     undoStack = [];
     redoStack = [];
+    stable.clear();
+    pendingBefore.clear();
     notify();
   }
 
   return {
     recordCreate,
     recordDelete,
+    beginEdit,
+    commitEdit,
     undo,
     redo,
     canUndo: () => undoStack.length > 0,
