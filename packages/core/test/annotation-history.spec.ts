@@ -69,6 +69,24 @@ function setup() {
   return { history, store: fake.store };
 }
 
+/** A manual single-slot scheduler: re-arming replaces the pending callback; flush() runs it. */
+function makeManualScheduler() {
+  let queued: (() => void) | null = null;
+  return {
+    schedule: (fn: () => void) => {
+      queued = fn;
+      return () => {
+        if (queued === fn) queued = null;
+      };
+    },
+    flush: () => {
+      const f = queued;
+      queued = null;
+      f?.();
+    },
+  };
+}
+
 describe("createAnnotationHistory", () => {
   it("undoes a create by removing the annotation", () => {
     const { history, store } = setup();
@@ -256,5 +274,43 @@ describe("createAnnotationHistory", () => {
     history.commitEdit("u1"); // a new action must invalidate redo
 
     expect(history.canRedo()).toBe(false);
+  });
+
+  it("coalesces a burst of modifications into a single edit step on idle", () => {
+    const sched = makeManualScheduler();
+    const fake = makeFake();
+    const history = createAnnotationHistory(fake.adapter, { schedule: sched.schedule });
+    fake.attach(history);
+    fake.store.set("u1", lengthAnn("u1"));
+    history.recordCreate("u1", "FOR1");
+
+    // three drag frames; geometry ends at [[5,5,5]]
+    history.noteModified(fake.store.get("u1")!);
+    fake.store.get("u1")!.data = { handles: { points: [[2, 2, 2]] } };
+    history.noteModified(fake.store.get("u1")!);
+    fake.store.get("u1")!.data = { handles: { points: [[5, 5, 5]] } };
+    history.noteModified(fake.store.get("u1")!);
+
+    sched.flush(); // gesture idle -> commit ONE edit
+
+    expect(history.undo()).toBe(true); // undo the single edit
+    expect(fake.store.get("u1")!.data).toEqual({ handles: { points: [[0, 0, 0]] } });
+    expect(history.canUndo()).toBe(true); // the create is still there
+  });
+
+  it("does not record an edit while applying (noteModified guarded)", () => {
+    const sched = makeManualScheduler();
+    const fake = makeFake();
+    const history = createAnnotationHistory(fake.adapter, { schedule: sched.schedule });
+    fake.attach(history);
+    fake.store.set("u1", lengthAnn("u1"));
+    history.recordDelete(fake.store.get("u1")!);
+    fake.store.delete("u1");
+
+    history.undo(); // re-adds u1 via addAnnotation; if that ever fired noteModified it must no-op
+    sched.flush(); // nothing should be queued/recorded
+
+    expect(history.canUndo()).toBe(false); // delete moved to redo, nothing spurious on undo stack
+    expect(history.canRedo()).toBe(true); // just the delete is there
   });
 });

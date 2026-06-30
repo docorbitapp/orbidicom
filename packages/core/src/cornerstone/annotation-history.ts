@@ -45,6 +45,8 @@ export interface AnnotationHistory {
   beginEdit(uid: string): void;
   /** Commit a gesture: push one `edit` step iff the annotation's geometry changed. */
   commitEdit(uid: string): void;
+  /** Wiring entry point: call once per ANNOTATION_MODIFIED. Captures "before" and (re)arms the idle timer. */
+  noteModified(annotation: HistoryAnnotation): void;
   /** Undo the most recent action; returns false if there's nothing to undo. */
   undo(): boolean;
   /** Redo the most recently undone action; returns false if there's nothing to redo. */
@@ -55,6 +57,14 @@ export interface AnnotationHistory {
   reset(): void;
   /** Subscribe to stack changes; returns an unsubscribe fn. */
   subscribe(cb: () => void): () => void;
+}
+
+/** Tunables for {@link createAnnotationHistory}; the scheduler is injectable for tests. */
+export interface AnnotationHistoryOptions {
+  /** Milliseconds of ANNOTATION_MODIFIED silence that ends an edit gesture (default 400). */
+  editIdleMs?: number;
+  /** Schedule `fn` after `ms`; returns a cancel fn. Defaults to setTimeout/clearTimeout. */
+  schedule?: (fn: () => void, ms: number) => () => void;
 }
 
 const clone = <T>(v: T): T =>
@@ -72,7 +82,10 @@ const handlesKey = (a: HistoryAnnotation | undefined): string =>
  * Without the guard, the REMOVED listener would record our own operation as a new
  * user delete and corrupt the stacks. While `applying` is set, recording no-ops.
  */
-export function createAnnotationHistory(adapter: AnnotationStateAdapter): AnnotationHistory {
+export function createAnnotationHistory(
+  adapter: AnnotationStateAdapter,
+  opts: AnnotationHistoryOptions = {},
+): AnnotationHistory {
   let undoStack: Entry[] = [];
   let redoStack: Entry[] = [];
   let applying = false;
@@ -82,6 +95,15 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
   const stable = new Map<string, HistoryAnnotation>();
   // Per-uid "before" snapshots captured at gesture start, awaiting commit.
   const pendingBefore = new Map<string, HistoryAnnotation>();
+  const editIdleMs = opts.editIdleMs ?? 400;
+  const schedule =
+    opts.schedule ??
+    ((fn: () => void, ms: number) => {
+      const id = setTimeout(fn, ms);
+      return () => clearTimeout(id);
+    });
+  // Active idle-timer cancelers, keyed by uid.
+  const cancelTimers = new Map<string, () => void>();
   const notify = () => {
     for (const cb of subs) cb();
   };
@@ -140,6 +162,21 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
     redoStack = [];
     stable.set(uid, after);
     notify();
+  }
+
+  function noteModified(ann: HistoryAnnotation): void {
+    if (applying) return;
+    const uid = ann.annotationUID ?? "";
+    if (!uid) return;
+    beginEdit(uid); // capture pre-edit baseline once per gesture
+    cancelTimers.get(uid)?.(); // re-arm on each modification
+    cancelTimers.set(
+      uid,
+      schedule(() => {
+        cancelTimers.delete(uid);
+        commitEdit(uid);
+      }, editIdleMs),
+    );
   }
 
   function apply(fn: () => void): void {
@@ -203,6 +240,8 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
     redoStack = [];
     stable.clear();
     pendingBefore.clear();
+    for (const cancel of cancelTimers.values()) cancel();
+    cancelTimers.clear();
     notify();
   }
 
@@ -211,6 +250,7 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
     recordDelete,
     beginEdit,
     commitEdit,
+    noteModified,
     undo,
     redo,
     canUndo: () => undoStack.length > 0,
@@ -261,6 +301,11 @@ const onRemoved = (evt: Event) => {
   if (isTracked(a)) annotationHistory.recordDelete(a);
 };
 
+const onModified = (evt: Event) => {
+  const a = annotationOf(evt);
+  if (isTracked(a)) annotationHistory.noteModified(a);
+};
+
 let started = false;
 
 /**
@@ -277,6 +322,10 @@ export function startAnnotationHistory(): () => void {
       csToolsEnums.Events.ANNOTATION_REMOVED,
       onRemoved as EventListener,
     );
+    eventTarget.addEventListener(
+      csToolsEnums.Events.ANNOTATION_MODIFIED,
+      onModified as EventListener,
+    );
     started = true;
   }
   return () => {
@@ -287,6 +336,10 @@ export function startAnnotationHistory(): () => void {
     eventTarget.removeEventListener(
       csToolsEnums.Events.ANNOTATION_REMOVED,
       onRemoved as EventListener,
+    );
+    eventTarget.removeEventListener(
+      csToolsEnums.Events.ANNOTATION_MODIFIED,
+      onModified as EventListener,
     );
     started = false;
   };
