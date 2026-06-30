@@ -12,7 +12,7 @@ vi.mock("@cornerstonejs/tools", () => ({
     },
   },
   Enums: {
-    Events: { ANNOTATION_COMPLETED: "a", ANNOTATION_REMOVED: "c" },
+    Events: { ANNOTATION_COMPLETED: "a", ANNOTATION_REMOVED: "c", ANNOTATION_MODIFIED: "b" },
   },
 }));
 vi.mock("@cornerstonejs/core", () => ({
@@ -263,15 +263,18 @@ describe("createAnnotationHistory", () => {
 
   it("clears the redo stack when an edit is recorded", () => {
     const { history, store } = setup();
+    // Create u1 (has a committed stable baseline) and u2 (will be undone to redo stack).
     store.set("u1", lengthAnn("u1"));
     history.recordCreate("u1", "FOR1");
-    history.undo(); // create -> redo stack
+    store.set("u2", lengthAnn("u2"));
+    history.recordCreate("u2", "FOR1");
+    history.undo(); // u2 create -> redo stack
     expect(history.canRedo()).toBe(true);
 
-    store.set("u1", lengthAnn("u1")); // (re-add so an edit target exists)
+    // Edit u1 (which has a stable baseline) — this new action must invalidate redo.
     history.beginEdit("u1");
     store.get("u1")!.data = { handles: { points: [[7, 7, 7]] } };
-    history.commitEdit("u1"); // a new action must invalidate redo
+    history.commitEdit("u1");
 
     expect(history.canRedo()).toBe(false);
   });
@@ -312,5 +315,45 @@ describe("createAnnotationHistory", () => {
 
     expect(history.canUndo()).toBe(false); // delete moved to redo, nothing spurious on undo stack
     expect(history.canRedo()).toBe(true); // just the delete is there
+  });
+
+  it("cancels a pending edit timer on undo/redo so no phantom edit is recorded", () => {
+    const sched = makeManualScheduler();
+    const fake = makeFake();
+    const history = createAnnotationHistory(fake.adapter, { schedule: sched.schedule });
+    fake.attach(history);
+    fake.store.set("u1", lengthAnn("u1")); // [[0,0,0]]
+    history.recordCreate("u1", "FOR1"); // undoStack=[create]; stable seeded
+
+    history.noteModified(fake.store.get("u1")!); // arms idle timer, captures before=[[0,0,0]]
+    fake.store.get("u1")!.data = { handles: { points: [[5, 5, 5]] } };
+
+    history.undo(); // undo the create (removes u1) — must cancel the armed timer
+    history.redo(); // redo re-adds u1
+    sched.flush(); // the cancelled timer must NOT fire commitEdit
+
+    // No phantom edit: a single undo removes the create, nothing beneath it.
+    expect(history.undo()).toBe(true);
+    expect(fake.store.has("u1")).toBe(false);
+    expect(history.canUndo()).toBe(false);
+  });
+
+  it("ignores ANNOTATION_MODIFIED before the annotation is created (no mid-draw orphan edit)", () => {
+    const sched = makeManualScheduler();
+    const fake = makeFake();
+    const history = createAnnotationHistory(fake.adapter, { schedule: sched.schedule });
+    fake.attach(history);
+    // user is still DRAWING u1: MODIFIED fires before COMPLETED/recordCreate
+    fake.store.set("u1", lengthAnn("u1"));
+    history.noteModified(fake.store.get("u1")!); // no committed baseline -> ignored
+    fake.store.get("u1")!.data = { handles: { points: [[5, 5, 5]] } };
+    sched.flush(); // even if a timer armed, commitEdit must record nothing
+
+    history.recordCreate("u1", "FOR1"); // draw completes
+
+    // Stack is exactly [create] — no orphan edit beneath it.
+    expect(history.undo()).toBe(true);
+    expect(fake.store.has("u1")).toBe(false);
+    expect(history.canUndo()).toBe(false);
   });
 });

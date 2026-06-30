@@ -135,15 +135,23 @@ export function createAnnotationHistory(
     });
     redoStack = [];
     stable.delete(uid);
-    pendingBefore.delete(uid);
+    cancelPendingEdit(uid);
     notify();
   }
 
   function beginEdit(uid: string): void {
     if (applying || !uid) return;
     if (pendingBefore.has(uid)) return; // gesture already in progress
-    const before = stable.get(uid) ?? adapter.getAnnotation(uid);
-    if (before) pendingBefore.set(uid, clone(before));
+    const before = stable.get(uid); // only capture once a committed baseline exists
+    if (!before) return;
+    pendingBefore.set(uid, clone(before));
+  }
+
+  /** Cancel any armed idle-timer and drop the captured before-snapshot for a uid. */
+  function cancelPendingEdit(uid: string): void {
+    cancelTimers.get(uid)?.();
+    cancelTimers.delete(uid);
+    pendingBefore.delete(uid);
   }
 
   function commitEdit(uid: string): void {
@@ -173,7 +181,10 @@ export function createAnnotationHistory(
   function noteModified(ann: HistoryAnnotation): void {
     if (applying) return;
     const uid = ann.annotationUID ?? "";
-    if (!uid) return;
+    // Ignore modifications until the annotation has been created (a committed baseline exists
+    // in `stable`). Cornerstone fires ANNOTATION_MODIFIED during the initial draw too; without
+    // this gate a mid-draw pause could record an edit step before the create.
+    if (!uid || !stable.has(uid)) return;
     beginEdit(uid); // capture pre-edit baseline once per gesture
     cancelTimers.get(uid)?.(); // re-arm on each modification
     cancelTimers.set(
@@ -197,6 +208,7 @@ export function createAnnotationHistory(
   function undo(): boolean {
     const entry = undoStack.pop();
     if (!entry) return false;
+    cancelPendingEdit(entry.uid);
     apply(() => {
       if (entry.kind === "create") {
         const live = adapter.getAnnotation(entry.uid);
@@ -221,6 +233,7 @@ export function createAnnotationHistory(
   function redo(): boolean {
     const entry = redoStack.pop();
     if (!entry) return false;
+    cancelPendingEdit(entry.uid);
     apply(() => {
       if (entry.kind === "create") {
         if (entry.snapshot) {
