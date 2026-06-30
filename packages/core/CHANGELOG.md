@@ -1,5 +1,11 @@
 # @orbidicom/core
 
+## 0.9.0
+
+### Minor Changes
+
+- [#6](https://github.com/docorbitapp/orbidicom/pull/6) [`942c0bb`](https://github.com/docorbitapp/orbidicom/commit/942c0bbb144cedc76f9418ea26c8acf49d694d69) Thanks [@gasci](https://github.com/gasci)! - Add a per-annotation **×** overlay to delete a single measurement directly in the viewport, and make annotation **delete** and **move/resize edits** undoable/redoable via the existing undo/redo (Ctrl/Cmd+Z, toolbar). Core gains `deleteAnnotation`, `getAnnotationDeleteTargets`, and `StackHandle.getViewport()`; the history controller records `edit` steps coalesced to one per drag gesture.
+
 ## 0.8.1
 
 ### Patch Changes
