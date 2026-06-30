@@ -228,6 +228,21 @@ describe("createAnnotationHistory", () => {
     expect(history.canRedo()).toBe(true); // the edit moved to redo, nothing spurious
   });
 
+  it("beginEdit is idempotent within a gesture — keeps the gesture-start snapshot", () => {
+    const { history, store } = setup();
+    store.set("u1", lengthAnn("u1")); // points [[0,0,0]]
+    history.recordCreate("u1", "FOR1");
+
+    history.beginEdit("u1"); // captures before = [[0,0,0]]
+    store.get("u1")!.data = { handles: { points: [[3, 3, 3]] } }; // mid-drag
+    history.beginEdit("u1"); // must NOT overwrite the original "before"
+    store.get("u1")!.data = { handles: { points: [[9, 9, 9]] } };
+    history.commitEdit("u1");
+
+    history.undo(); // undo the edit -> must restore the gesture-START geometry
+    expect(store.get("u1")!.data).toEqual({ handles: { points: [[0, 0, 0]] } });
+  });
+
   it("clears the redo stack when an edit is recorded", () => {
     const { history, store } = setup();
     store.set("u1", lengthAnn("u1"));

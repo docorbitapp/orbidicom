@@ -161,12 +161,12 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
         adapter.removeAnnotation(entry.uid);
         stable.delete(entry.uid);
       } else if (entry.kind === "delete") {
-        adapter.addAnnotation(entry.snapshot, entry.group);
+        adapter.addAnnotation(clone(entry.snapshot), entry.group);
         stable.set(entry.uid, clone(entry.snapshot));
       } else {
         // edit: restore the pre-edit snapshot (replace current state)
         adapter.removeAnnotation(entry.uid);
-        adapter.addAnnotation(entry.before, entry.group);
+        adapter.addAnnotation(clone(entry.before), entry.group);
         stable.set(entry.uid, clone(entry.before));
       }
     });
@@ -181,7 +181,7 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
     apply(() => {
       if (entry.kind === "create") {
         if (entry.snapshot) {
-          adapter.addAnnotation(entry.snapshot, entry.group);
+          adapter.addAnnotation(clone(entry.snapshot), entry.group);
           stable.set(entry.uid, clone(entry.snapshot));
         }
       } else if (entry.kind === "delete") {
@@ -189,7 +189,7 @@ export function createAnnotationHistory(adapter: AnnotationStateAdapter): Annota
         stable.delete(entry.uid);
       } else {
         adapter.removeAnnotation(entry.uid);
-        adapter.addAnnotation(entry.after, entry.group);
+        adapter.addAnnotation(clone(entry.after), entry.group);
         stable.set(entry.uid, clone(entry.after));
       }
     });
