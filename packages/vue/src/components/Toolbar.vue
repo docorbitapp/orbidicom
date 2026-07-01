@@ -1,11 +1,19 @@
 <template>
-  <div class="toolbar">
+  <div
+    ref="rootEl"
+    class="toolbar"
+    @pointerover="onTipOver"
+    @pointerout="onTipOut"
+    @focusin="onTipFocus"
+    @focusout="hideTip"
+    @scroll.passive="hideTip"
+  >
     <!-- Mobile-only: hamburger that toggles the controls menu (language, host
          actions, hint). In normal flow, right before the title. -->
     <button
+      v-tip="t('menu')"
       class="toolbar__menu"
       :class="{ 'toolbar__menu--active': menuOpen }"
-      :title="t('menu')"
       :aria-expanded="menuOpen ?? false"
       @click="$emit('toggleMenu')"
     >
@@ -25,12 +33,12 @@
 
     <!-- W/L presets only exist for CT; hidden for other modalities. -->
     <template v-if="presets.length">
-      <label class="wl" @click="openSelect">
+      <label v-tip="t('presetTitle')" class="wl" @click="openSelect">
         <span class="wl__label">W/L</span>
         <select
           class="wl__select"
           :value="''"
-          :title="t('presetTitle')"
+          :aria-label="t('presetTitle')"
           @change="onPreset(($event.target as HTMLSelectElement).value)"
         >
           <option value="" disabled>{{ t("preset") }}</option>
@@ -45,18 +53,18 @@
       <button
         v-for="tool in toolButtons"
         :key="tool.name"
+        v-tip="{ text: t(tool.titleKey), key: toolHotkey[tool.name] }"
         class="tbtn"
         :class="{ 'tbtn--active': activeTool === tool.name }"
-        :title="toolTitle(tool)"
         @click="$emit('tool', tool.name)"
       >
         <!-- eslint-disable-next-line vue/no-v-html -- tool.icon is static, trusted SVG markup defined in this file -->
         <svg viewBox="0 0 24 24" v-html="tool.icon" />
       </button>
       <button
+        v-tip="{ text: t('undo'), key: 'Ctrl+Z' }"
         class="tbtn tbtn--undo"
         :disabled="!canUndo"
-        :title="withKey(t('undo'), 'Ctrl+Z')"
         @click="$emit('undo')"
       >
         <svg
@@ -71,9 +79,9 @@
         </svg>
       </button>
       <button
+        v-tip="{ text: t('redo'), key: 'Ctrl+Shift+Z' }"
         class="tbtn tbtn--redo"
         :disabled="!canRedo"
-        :title="withKey(t('redo'), 'Ctrl+Shift+Z')"
         @click="$emit('redo')"
       >
         <svg
@@ -87,7 +95,7 @@
           <path d="M17 7l4 4-4 4M21 11H11a6 6 0 0 0 0 12h5" />
         </svg>
       </button>
-      <button class="tbtn" :title="t('clearMeasurements')" @click="$emit('clearAnnotations')">
+      <button v-tip="t('clearMeasurements')" class="tbtn" @click="$emit('clearAnnotations')">
         <svg
           viewBox="0 0 24 24"
           fill="none"
@@ -105,8 +113,8 @@
 
     <div class="toolbar__group">
       <button
+        v-tip="{ text: t('invert'), key: actionHotkey.invert }"
         class="tbtn"
-        :title="withKey(t('invert'), actionHotkey.invert)"
         @click="$emit('invert')"
       >
         <svg viewBox="0 0 24 24">
@@ -125,8 +133,8 @@
         </svg>
       </button>
       <button
+        v-tip="{ text: t('rotate'), key: actionHotkey.rotate }"
         class="tbtn"
-        :title="withKey(t('rotate'), actionHotkey.rotate)"
         @click="$emit('rotate')"
       >
         <svg
@@ -141,7 +149,11 @@
           <path d="M21 3v4h-4" />
         </svg>
       </button>
-      <button class="tbtn" :title="withKey(t('flip'), actionHotkey.flipH)" @click="$emit('flipH')">
+      <button
+        v-tip="{ text: t('flip'), key: actionHotkey.flipH }"
+        class="tbtn"
+        @click="$emit('flipH')"
+      >
         <svg
           viewBox="0 0 24 24"
           fill="none"
@@ -155,7 +167,11 @@
           <path d="M16 7l4 5-4 5" />
         </svg>
       </button>
-      <button class="tbtn" :title="withKey(t('reset'), actionHotkey.reset)" @click="$emit('reset')">
+      <button
+        v-tip="{ text: t('reset'), key: actionHotkey.reset }"
+        class="tbtn"
+        @click="$emit('reset')"
+      >
         <svg
           viewBox="0 0 24 24"
           fill="none"
@@ -172,7 +188,7 @@
     <div class="toolbar__sep" />
 
     <!-- Grid layout: 1×1 .. 2×5 (1/2/4/6/8/10 viewports). -->
-    <label class="layout" :title="t('layout')" @click="openSelect">
+    <label v-tip="t('layout')" class="layout" @click="openSelect">
       <svg
         class="layout__icon"
         viewBox="0 0 24 24"
@@ -205,9 +221,9 @@
 
     <!-- Toggle the on-image overlay: show full info <-> blur patient data. -->
     <button
+      v-tip="overlayTitle"
       class="tbtn tbtn--overlay"
       :class="{ 'tbtn--active': mode === 'full', 'tbtn--privacy': mode === 'private' }"
-      :title="overlayTitle"
       @click="$emit('cycleOverlay')"
     >
       <!-- full: info circle -->
@@ -240,7 +256,7 @@
     </button>
 
     <!-- Open the full DICOM metadata reader panel. -->
-    <button class="tbtn tbtn--meta" :title="t('metadataTitle')" @click="$emit('openMeta')">
+    <button v-tip="t('metadataTitle')" class="tbtn tbtn--meta" @click="$emit('openMeta')">
       <svg
         viewBox="0 0 24 24"
         fill="none"
@@ -257,8 +273,8 @@
     <template v-if="canDownload">
       <div class="toolbar__sep" />
       <button
+        v-tip="t('downloadStudy')"
         class="tbtn tbtn--download"
-        :title="t('downloadStudy')"
         @click="$emit('downloadStudy')"
       >
         <svg
@@ -279,8 +295,8 @@
     <template v-if="canDownloadImage">
       <div class="toolbar__sep" />
       <button
+        v-tip="t('downloadImage')"
         class="tbtn tbtn--download-image"
-        :title="t('downloadImage')"
         @click="$emit('downloadImage')"
       >
         <svg
@@ -298,9 +314,9 @@
       </button>
       <!-- Flag the current slice as a key image (toggle). A badge shows the count. -->
       <button
+        v-tip="{ text: t('flagKeyImage'), key: actionHotkey.keyImage }"
         class="tbtn tbtn--keyimage"
         :class="{ 'tbtn--active': isKeyImage }"
-        :title="withKey(t('flagKeyImage'), actionHotkey.keyImage)"
         @click="$emit('toggleKeyImage')"
       >
         <svg
@@ -321,8 +337,8 @@
     <template v-if="keyImageCount">
       <div class="toolbar__sep" />
       <button
+        v-tip="`${t('keyImages')} (${keyImageCount})`"
         class="tbtn tbtn--export-keyimages"
-        :title="`${t('keyImages')} (${keyImageCount})`"
         @click="$emit('exportKeyImages')"
       >
         <svg
@@ -345,8 +361,8 @@
       <div class="toolbar__sep" />
       <div class="toolbar__group tbtn--export-measurements">
         <button
+          v-tip="t('exportMeasurementsJson')"
           class="tbtn"
-          :title="t('exportMeasurementsJson')"
           @click="$emit('exportMeasurements', 'json')"
         >
           <svg
@@ -372,8 +388,8 @@
           </svg>
         </button>
         <button
+          v-tip="t('exportMeasurementsCsv')"
           class="tbtn"
-          :title="t('exportMeasurementsCsv')"
           @click="$emit('exportMeasurements', 'csv')"
         >
           <svg
@@ -396,7 +412,7 @@
          when the data source advertises store support and measurements exist. -->
     <template v-if="canUploadSr">
       <div class="toolbar__sep" />
-      <button class="tbtn tbtn--upload-sr" :title="t('uploadSr')" @click="$emit('uploadSr')">
+      <button v-tip="t('uploadSr')" class="tbtn tbtn--upload-sr" @click="$emit('uploadSr')">
         <svg
           viewBox="0 0 24 24"
           fill="none"
@@ -410,10 +426,30 @@
         </svg>
       </button>
     </template>
+
+    <!-- Custom hover tooltip. Teleported to the .orbidicom container so it inherits
+         the theme tokens (they're scoped to that container, not :root) while its
+         fixed positioning still escapes the toolbar's horizontal-scroll overflow. -->
+    <Teleport :to="tipHost">
+      <Transition name="tip">
+        <div
+          v-if="tip"
+          ref="tipEl"
+          class="tip"
+          role="tooltip"
+          :style="{ left: `${tip.x}px`, top: `${tip.y}px` }"
+        >
+          <span class="tip__label">{{ tip.label }}</span>
+          <span v-if="tip.keys.length" class="tip__keys">
+            <kbd v-for="(k, i) in tip.keys" :key="i" class="tip__key">{{ k }}</kbd>
+          </span>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, nextTick, onMounted, onUnmounted } from "vue";
 import { windowPresetsFor, type WlPreset, TOOLS, DEFAULT_KEYMAP } from "@orbidicom/core";
 import { t, type I18nKey } from "../i18n";
 
@@ -573,9 +609,85 @@ for (const [key, cmd] of Object.entries(DEFAULT_KEYMAP)) {
   else if (cmd.kind === "reset") actionHotkey.reset = k;
   else if (cmd.kind === "keyImage") actionHotkey.keyImage = k;
 }
-const withKey = (label: string, key?: string) => (key ? `${label} (${key})` : label);
-const toolTitle = (tool: { name: string; titleKey: I18nKey }) =>
-  withKey(t(tool.titleKey), toolHotkey[tool.name]);
+// --- Custom hover tooltip -------------------------------------------------
+// Native `title` tooltips are slow (~0.5s) and unstyled. `v-tip` renders a themed
+// chip instead, teleported to <body> so the toolbar's horizontal scroll can't clip
+// it, and shows the action's keyboard shortcut as keycaps. It appears for mouse
+// hover and keyboard focus only — never on touch (a sticky tooltip with no way to
+// dismiss). The directive also mirrors the label into aria-label so icon-only
+// buttons keep an accessible name (previously carried by `title`).
+type TipValue = string | { text: string; key?: string };
+function applyTip(el: HTMLElement, v: TipValue) {
+  const text = typeof v === "string" ? v : v.text;
+  const key = typeof v === "string" ? undefined : v.key;
+  el.setAttribute("data-tip", text);
+  el.setAttribute("aria-label", text);
+  if (key) el.setAttribute("data-tip-key", key);
+  else el.removeAttribute("data-tip-key");
+}
+const vTip = {
+  mounted: (el: HTMLElement, b: { value: TipValue }) => applyTip(el, b.value),
+  updated: (el: HTMLElement, b: { value: TipValue }) => applyTip(el, b.value),
+};
+
+const tip = ref<{ label: string; keys: string[]; x: number; y: number } | null>(null);
+const tipEl = ref<HTMLElement | null>(null);
+const rootEl = ref<HTMLElement | null>(null);
+// Render the chip inside this toolbar's own themed container (theme.css scopes the
+// CSS variables to `.orbidicom`, not `:root`), falling back to <body>. closest()
+// picks the right container even with multiple viewers mounted on one page.
+const tipHost = ref<HTMLElement | string>("body");
+onMounted(() => {
+  tipHost.value = rootEl.value?.closest<HTMLElement>(".orbidicom") ?? document.body;
+});
+let tipTimer: ReturnType<typeof setTimeout> | undefined;
+// Focus should only surface a tooltip on hover-capable devices; tapping a button
+// on a touchscreen also focuses it, and we don't want a stuck chip there.
+const canHover = () => window.matchMedia?.("(hover: hover)").matches ?? true;
+
+function showTip(el: HTMLElement) {
+  const label = el.getAttribute("data-tip");
+  if (!label) return;
+  const keyAttr = el.getAttribute("data-tip-key");
+  const r = el.getBoundingClientRect();
+  clearTimeout(tipTimer);
+  // A short delay keeps the chip from flickering as the pointer sweeps the row.
+  tipTimer = setTimeout(async () => {
+    tip.value = {
+      label,
+      keys: keyAttr ? keyAttr.split("+") : [],
+      x: r.left + r.width / 2,
+      y: r.bottom + 8,
+    };
+    // Clamp the (centered) chip within the viewport once we can measure its width.
+    await nextTick();
+    const box = tipEl.value;
+    if (!box || !tip.value) return;
+    const half = box.offsetWidth / 2;
+    const x = Math.min(Math.max(tip.value.x, half + 8), window.innerWidth - half - 8);
+    if (x !== tip.value.x) tip.value = { ...tip.value, x };
+  }, 90);
+}
+function hideTip() {
+  clearTimeout(tipTimer);
+  tip.value = null;
+}
+function onTipOver(e: PointerEvent) {
+  if (e.pointerType && e.pointerType !== "mouse") return;
+  const el = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-tip]");
+  if (el) showTip(el);
+}
+function onTipOut(e: PointerEvent) {
+  const el = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-tip]");
+  const to = e.relatedTarget as Node | null;
+  if (el && !(to && el.contains(to))) hideTip();
+}
+function onTipFocus(e: FocusEvent) {
+  if (!canHover()) return;
+  const el = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-tip]");
+  if (el) showTip(el);
+}
+onUnmounted(() => clearTimeout(tipTimer));
 </script>
 <style scoped>
 .toolbar {
@@ -793,6 +905,77 @@ const toolTitle = (tool: { name: string; titleKey: I18nKey }) =>
 @media (max-width: 640px) {
   .toolbar__menu {
     display: grid;
+  }
+}
+
+/* Custom hover tooltip (teleported to <body>, so it renders in this component's
+   scope but is not clipped by the toolbar's overflow). Centered under its trigger
+   via translateX(-50%); showTip() sets left/top. */
+.tip {
+  position: fixed;
+  z-index: 1000;
+  transform: translate(-50%, 0);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 280px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  /* Never intercept the pointer — the tooltip is a passive readout. */
+  pointer-events: none;
+  white-space: nowrap;
+  font-family: var(--font);
+}
+.tip__label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: var(--text);
+}
+.tip__keys {
+  display: inline-flex;
+  gap: 3px;
+}
+/* Keycap: a small teal-tinted cap that teaches the button's shortcut — the one
+   deliberate flourish, echoing the accent used across the viewer. */
+.tip__key {
+  min-width: 16px;
+  padding: 1px 4px;
+  border: 1px solid color-mix(in srgb, var(--accent-strong) 40%, var(--border));
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--elevated);
+  color: var(--accent-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+  text-transform: uppercase;
+}
+.tip-enter-active,
+.tip-leave-active {
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+.tip-enter-from,
+.tip-leave-to {
+  opacity: 0;
+  /* Starts tucked toward the button, then settles down into place. */
+  transform: translate(-50%, -4px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tip-enter-active,
+  .tip-leave-active {
+    transition: opacity 0.12s ease;
+  }
+  .tip-enter-from,
+  .tip-leave-to {
+    transform: translate(-50%, 0);
   }
 }
 </style>

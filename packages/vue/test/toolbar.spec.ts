@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { nextTick } from "vue";
 import { mount } from "@vue/test-utils";
 import Toolbar from "../src/components/Toolbar.vue";
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe("Toolbar", () => {
   it("shows W/L presets for CT and emits the chosen preset object", async () => {
@@ -125,7 +128,8 @@ describe("Toolbar", () => {
     });
     const btn = w.find(".tbtn--export-keyimages");
     expect(btn.exists()).toBe(true);
-    expect(btn.attributes("title")).toContain("3");
+    // The hover label (via v-tip -> data-tip) carries the flagged count.
+    expect(btn.attributes("data-tip")).toContain("3");
     await btn.trigger("click");
     expect(w.emitted("exportKeyImages")).toBeTruthy();
   });
@@ -202,5 +206,55 @@ describe("Toolbar", () => {
       .findAll(".layout__select option")
       .find((o) => o.attributes("value") === "mpr")!;
     expect(mprOn.attributes("disabled")).toBeUndefined();
+  });
+
+  it("surfaces a themed hover tooltip inside .orbidicom with the shortcut keycap, and hides on leave", async () => {
+    // Mount inside a .orbidicom host: the theme CSS vars are scoped to that
+    // container, so the chip must teleport there (not <body>) to be styled.
+    const host = document.createElement("div");
+    host.className = "orbidicom";
+    document.body.appendChild(host);
+    const w = mount(Toolbar, {
+      props: { modality: "CT", activeTool: "WindowLevel", layout: 1 },
+      attachTo: host,
+    });
+    // v-tip mirrors the label into aria-label so icon-only buttons stay accessible.
+    const zoom = w.findAll("button.tbtn").find((b) => b.attributes("data-tip") === "Zoom")!;
+    expect(zoom).toBeTruthy();
+    expect(zoom.attributes("aria-label")).toBe("Zoom");
+    expect(zoom.attributes("data-tip-key")).toBe("Z");
+
+    await zoom.trigger("pointerover", { pointerType: "mouse" });
+    await wait(120); // showTip() debounces ~90ms before revealing the chip
+    await nextTick();
+    // The chip lives within the themed container, not loose in <body>.
+    const tip = host.querySelector(".tip");
+    expect(tip).toBeTruthy();
+    expect(tip!.closest(".orbidicom")).toBe(host);
+    expect(tip!.textContent).toContain("Zoom");
+    expect(tip!.querySelector(".tip__key")?.textContent).toBe("Z");
+
+    await zoom.trigger("pointerout", { pointerType: "mouse" });
+    await nextTick();
+    expect(host.querySelector(".tip")).toBeNull();
+    w.unmount();
+    host.remove();
+  });
+
+  it("never opens the tooltip for touch input", async () => {
+    const host = document.createElement("div");
+    host.className = "orbidicom";
+    document.body.appendChild(host);
+    const w = mount(Toolbar, {
+      props: { modality: "CT", activeTool: "WindowLevel", layout: 1 },
+      attachTo: host,
+    });
+    const zoom = w.findAll("button.tbtn").find((b) => b.attributes("data-tip") === "Zoom")!;
+    await zoom.trigger("pointerover", { pointerType: "touch" });
+    await wait(120);
+    await nextTick();
+    expect(host.querySelector(".tip")).toBeNull();
+    w.unmount();
+    host.remove();
   });
 });

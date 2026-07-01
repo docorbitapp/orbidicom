@@ -509,6 +509,35 @@ describe("Viewer", () => {
     expect(twoSeriesSource.getImageIds).toHaveBeenCalledTimes(2); // both cells loaded
   });
 
+  it("keeps the cine-speed dropdown in sync with each cell's own autoplay fps", async () => {
+    const protocol = () => ({ cellCount: 2, assignments: [0, 1] });
+    const w = mount(Viewer, {
+      props: { source: twoSeriesSource as never, hangingProtocol: protocol as never },
+    });
+    await flushPromises();
+
+    const cells = w.findAll(".cell");
+    const speed = () => w.find(".slicebar__speed");
+    const play = () => w.find(".slicebar__play");
+
+    // Cell 0: pick 5 fps, then start autoplay.
+    await speed().setValue("5");
+    stack.playCine.mockClear();
+    await play().trigger("click");
+    expect(stack.playCine).toHaveBeenLastCalledWith(5);
+
+    // Focus cell 1: pick 20 fps, then start autoplay.
+    await cells[1].trigger("pointerdown");
+    await speed().setValue("20");
+    stack.playCine.mockClear();
+    await play().trigger("click");
+    expect(stack.playCine).toHaveBeenLastCalledWith(20);
+
+    // Back to cell 0 — the dropdown must show ITS fps (5), not cell 1's 20.
+    await cells[0].trigger("pointerdown");
+    expect((speed().element as HTMLSelectElement).value).toBe("5");
+  });
+
   it("renders a 3D pane with a preset picker that drives setPreset", async () => {
     mprHandle.setPreset.mockClear();
     const w = mount(Viewer, { props: { source: volumeSource as never } });
