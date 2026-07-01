@@ -172,7 +172,7 @@
           <select
             class="slicebar__speed"
             :title="t('cineSpeed')"
-            :value="cineFps"
+            :value="cineFps[activeCell]"
             @change="setSpeed(Number(($event.target as HTMLSelectElement).value))"
           >
             <option v-for="f in CINE_SPEEDS" :key="f" :value="f">{{ f }} fps</option>
@@ -334,7 +334,6 @@ let enteringMpr = false;
 // Active 3D volume-rendering preset (only meaningful in MPR mode).
 const vrPreset = ref<string>(VR_PRESETS[0]);
 const activeTool = ref<string>(TOOLS.WindowLevel);
-const cineFps = ref(CINE_FPS);
 const confirmClearOpen = ref(false);
 // Overlay toggle: show full info <-> blur patient data (for demos/screenshots).
 const overlayMode = ref<"full" | "private">("full");
@@ -365,6 +364,9 @@ const wl = reactive<(WindowLevel | null)[]>(fill<WindowLevel | null>(null));
 const meta = reactive<(ImageMetadata | null)[]>(fill<ImageMetadata | null>(null));
 const cellLoading = reactive<boolean[]>(fill(false));
 const cinePlaying = reactive<boolean[]>(fill(false));
+// Cine speed is per-cell: each grid cell can autoplay at its own fps, so the
+// speed dropdown must track the active cell (not a single shared value).
+const cineFps = reactive<number[]>(fill(CINE_FPS));
 // Object URL of the encapsulated PDF shown in a cell (null = image/empty cell).
 const pdfUrl = reactive<(string | null)[]>(fill<string | null>(null));
 // Parsed Structured Report shown in a cell (null = not an SR cell).
@@ -709,14 +711,14 @@ function toggleCine() {
     stacks[i]!.stopCine();
     cinePlaying[i] = false;
   } else {
-    stacks[i]!.playCine(cineFps.value);
+    stacks[i]!.playCine(cineFps[i]);
     cinePlaying[i] = true;
   }
 }
-// Change cine speed; if the active cell is playing, restart it at the new fps.
+// Change the active cell's cine speed; if it's playing, restart it at the new fps.
 function setSpeed(fps: number) {
-  cineFps.value = fps;
   const i = activeCell.value;
+  cineFps[i] = fps;
   if (cinePlaying[i] && stacks[i]) {
     stacks[i]!.stopCine();
     stacks[i]!.playCine(fps);
