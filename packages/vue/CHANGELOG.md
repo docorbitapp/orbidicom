@@ -1,5 +1,24 @@
 # @orbidicom/vue
 
+## 0.9.1
+
+### Patch Changes
+
+- [`f2d020a`](https://github.com/docorbitapp/orbidicom/commit/f2d020a4eabb3f9a0febd10fb250cc98d088f9cd) Thanks [@gasci](https://github.com/gasci)! - Toolbar controls now show a custom, themed hover tooltip instead of the slow,
+  OS-styled native `title`. The chip is teleported into the viewer's themed
+  container and fixed-positioned (so the toolbar's horizontal scroll can't clip
+  it, and it inherits the theme tokens) and displays the action's keyboard shortcut as
+  keycaps. It appears on mouse hover and keyboard focus only — never on touch — and
+  respects `prefers-reduced-motion`. Labels are mirrored to `aria-label`, so
+  icon-only buttons keep an accessible name.
+
+- [`f2d020a`](https://github.com/docorbitapp/orbidicom/commit/f2d020a4eabb3f9a0febd10fb250cc98d088f9cd) Thanks [@gasci](https://github.com/gasci)! - Fix: the cine-speed dropdown now tracks the active grid cell's own fps. In a
+  multi-cell grid, autoplaying one cell at 10fps and another at 20fps left the
+  dropdown showing a single shared value, so switching the active cell no longer
+  reflected that cell's playback speed. Cine speed is now stored per cell.
+- Updated dependencies []:
+  - @orbidicom/core@0.9.1
+
 ## 0.9.0
 
 ### Minor Changes
