@@ -8,7 +8,7 @@
       :title="label(s, i)"
       @click="$emit('select', i)"
     >
-      <span class="rail__thumb" :ref="(el) => bindThumb(el as Element | null, s)">
+      <span :ref="(el) => bindThumb(el as Element | null, s)" class="rail__thumb">
         <img
           v-if="st(s).kind === 'image'"
           class="rail__img"
@@ -51,7 +51,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { reactive, onMounted, onUnmounted } from "vue";
+import { reactive, onBeforeMount, onUnmounted, watch } from "vue";
 import type { SeriesSummary, ThumbnailProvider } from "@orbidicom/core";
 import { t } from "../i18n";
 
@@ -125,7 +125,12 @@ function bindThumb(el: Element | null, s: SeriesSummary) {
   else load(uid); // no IntersectionObserver (e.g. jsdom / SSR) → load eagerly
 }
 
-onMounted(() => {
+// Construct the observer in `onBeforeMount`, not `onMounted`: Vue invokes each
+// row's function ref synchronously during the first DOM patch, which happens
+// *before* `onMounted`. If `io` were still null then, every `bindThumb` would
+// take the eager `else load(uid)` path and mark the row `observed`, so it would
+// never be observed once `io` existed — the lazy path would be dead code.
+onBeforeMount(() => {
   if (typeof IntersectionObserver === "undefined") return;
   io = new IntersectionObserver(
     (entries) => {
@@ -141,6 +146,18 @@ onMounted(() => {
     { root: null, rootMargin: "200px" },
   );
 });
+
+// A new study replaces props.series wholesale (identity change). In-place count
+// reconciliation mutates existing objects and won't trip this. Reset per-series
+// preview state so stale UIDs don't accumulate across studies.
+watch(
+  () => props.series,
+  () => {
+    observed.clear();
+    seriesByUid.clear();
+    for (const k of Object.keys(states)) delete states[k];
+  },
+);
 
 onUnmounted(() => io?.disconnect());
 </script>

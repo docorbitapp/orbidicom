@@ -75,4 +75,32 @@ describe("SeriesRail", () => {
     await flushPromises();
     expect(w.findAll(".rail__item")[0].find(".rail__glyph--none").exists()).toBe(true);
   });
+
+  it("defers loading until a row scrolls into view when IntersectionObserver exists", async () => {
+    const observedEls: Element[] = [];
+    let trigger!: (entries: { target: Element; isIntersecting: boolean }[]) => void;
+    class FakeIO {
+      constructor(cb: (entries: { target: Element; isIntersecting: boolean }[]) => void) {
+        trigger = cb;
+      }
+      observe(el: Element) {
+        observedEls.push(el);
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("IntersectionObserver", FakeIO);
+    const provider = providerStub("blob:mock/thumb");
+    const w = mount(SeriesRail, { props: { series, active: 0, provider } });
+    await flushPromises();
+    expect(provider.get).not.toHaveBeenCalled(); // observed, not loaded
+    expect(observedEls.length).toBe(series.length);
+    trigger([{ target: observedEls[0], isIntersecting: true }]); // first row scrolls in
+    await flushPromises();
+    expect(provider.get).toHaveBeenCalledTimes(1);
+    expect(w.findAll(".rail__item")[0].find(".rail__img").attributes("src")).toBe(
+      "blob:mock/thumb",
+    );
+    vi.unstubAllGlobals();
+  });
 });
