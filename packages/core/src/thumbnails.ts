@@ -101,6 +101,7 @@ export function createThumbnailProvider(opts: ThumbnailProviderOptions): Thumbna
           /* fall through to client render */
         }
       }
+      if (destroyed) return null;
       try {
         const ids = await source.getImageIds(series);
         if (!ids.length) return store(key, null);

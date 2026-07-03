@@ -18,7 +18,8 @@ export interface ThumbnailerOptions {
  * A framework-agnostic thumbnail renderer. It keeps ONE hidden, off-screen
  * Cornerstone stack viewport alive and reuses it for every request, capturing the
  * rendered frame via the same untainted-canvas path the viewer uses for exports.
- * Requests must be serialized by the caller (the ThumbnailProvider does this).
+ * Concurrent `render()` calls are serialized internally on the single shared
+ * viewport, so callers may fan out freely.
  */
 export function createThumbnailer(opts: ThumbnailerOptions = {}): Thumbnailer {
   const size = opts.size ?? 128;
@@ -26,6 +27,11 @@ export function createThumbnailer(opts: ThumbnailerOptions = {}): Thumbnailer {
   let element: HTMLDivElement | null = null;
   let handle: StackHandle | null = null;
   let destroyed = false;
+  // The single reused viewport shows one slice at a time, so overlapping
+  // setStack/capture calls would clobber each other. Chain renders so only one
+  // runs on the viewport at a time (honors this module's own serialization
+  // contract regardless of how many callers fan out).
+  let queue: Promise<unknown> = Promise.resolve();
 
   function ensure(): StackHandle {
     if (handle) return handle;
@@ -41,19 +47,28 @@ export function createThumbnailer(opts: ThumbnailerOptions = {}): Thumbnailer {
   }
 
   return {
-    async render(imageId, renderOpts = {}) {
-      if (destroyed || renderOpts.signal?.aborted) return null;
-      const h = ensure();
-      // A bad frame can make setStack (decode/network) or capture reject; the
-      // contract is "null if it cannot be captured", so swallow and resolve null
-      // rather than propagating — consistent with captureSliceJpeg's own null path.
-      try {
-        await h.setStack([imageId]);
+    render(imageId, renderOpts = {}) {
+      if (destroyed || renderOpts.signal?.aborted) return Promise.resolve(null);
+      const run = async (): Promise<Blob | null> => {
         if (destroyed || renderOpts.signal?.aborted) return null;
-        return await h.captureSliceJpeg(quality);
-      } catch {
-        return null;
-      }
+        const h = ensure();
+        // A bad frame can make setStack (decode/network) or capture reject; the
+        // contract is "null if it cannot be captured", so swallow and resolve
+        // null rather than propagating — consistent with captureSliceJpeg's own
+        // null path.
+        try {
+          await h.setStack([imageId]);
+          if (destroyed || renderOpts.signal?.aborted) return null;
+          return await h.captureSliceJpeg(quality);
+        } catch {
+          return null;
+        }
+      };
+      const result = queue.then(run);
+      // Keep the chain alive even if a render settled; run() never rejects, so
+      // this catch is just belt-and-suspenders against an unexpected throw.
+      queue = result.catch(() => {});
+      return result;
     },
     destroy() {
       if (destroyed) return;

@@ -66,4 +66,25 @@ describe("createThumbnailer", () => {
     await expect(t.render("a", { signal: ctrl.signal })).resolves.toBeNull();
     expect(h.handle.setStack).not.toHaveBeenCalled();
   });
+
+  it("serializes concurrent renders on the shared viewport", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    h.handle.setStack
+      .mockImplementationOnce(async () => {
+        await gate;
+      })
+      .mockImplementationOnce(async () => {});
+    const t = createThumbnailer();
+    const p1 = t.render("a");
+    const p2 = t.render("b");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(h.handle.setStack).toHaveBeenCalledTimes(1); // second is queued behind the first
+    release();
+    await Promise.all([p1, p2]);
+    expect(h.handle.setStack).toHaveBeenCalledTimes(2);
+    expect(h.handle.setStack).toHaveBeenNthCalledWith(1, ["a"]);
+    expect(h.handle.setStack).toHaveBeenNthCalledWith(2, ["b"]);
+  });
 });
