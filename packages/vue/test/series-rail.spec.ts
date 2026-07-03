@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { mount } from "@vue/test-utils";
+import { describe, it, expect, vi } from "vitest";
+import { flushPromises, mount } from "@vue/test-utils";
 import SeriesRail from "../src/components/SeriesRail.vue";
 
 const series = [
@@ -37,5 +37,42 @@ describe("SeriesRail", () => {
     const item = w.findAll(".rail__item")[0];
     expect(item.text()).toContain("DOC");
     expect(item.text()).not.toContain("img"); // no "· 0 img" for report series
+  });
+
+  function providerStub(url: string | null) {
+    return { get: vi.fn(async () => url), destroy: vi.fn() };
+  }
+
+  it("shows the rendered thumbnail once the provider resolves a URL", async () => {
+    const provider = providerStub("blob:mock/thumb");
+    const w = mount(SeriesRail, { props: { series, active: 0, provider } });
+    await flushPromises();
+    const img = w.findAll(".rail__item")[0].find(".rail__img");
+    expect(img.exists()).toBe(true);
+    expect(img.attributes("src")).toBe("blob:mock/thumb");
+    expect(provider.get).toHaveBeenCalled();
+  });
+
+  it("shows the document glyph for a no-image report series and skips the provider", async () => {
+    const provider = providerStub("blob:x");
+    const reports = [
+      {
+        seriesInstanceUID: "DOC1",
+        modality: "DOC",
+        seriesDescription: "REPORT",
+        numberOfFrames: 0,
+      },
+    ];
+    const w = mount(SeriesRail, { props: { series: reports, active: 0, provider } });
+    await flushPromises();
+    expect(w.findAll(".rail__item")[0].find(".rail__glyph--doc").exists()).toBe(true);
+    expect(provider.get).not.toHaveBeenCalled();
+  });
+
+  it("shows the no-preview glyph when the provider resolves null", async () => {
+    const provider = providerStub(null);
+    const w = mount(SeriesRail, { props: { series, active: 0, provider } });
+    await flushPromises();
+    expect(w.findAll(".rail__item")[0].find(".rail__glyph--none").exists()).toBe(true);
   });
 });
