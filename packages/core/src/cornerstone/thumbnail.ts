@@ -44,9 +44,16 @@ export function createThumbnailer(opts: ThumbnailerOptions = {}): Thumbnailer {
     async render(imageId, renderOpts = {}) {
       if (destroyed || renderOpts.signal?.aborted) return null;
       const h = ensure();
-      await h.setStack([imageId]);
-      if (destroyed || renderOpts.signal?.aborted) return null;
-      return h.captureSliceJpeg(quality);
+      // A bad frame can make setStack (decode/network) or capture reject; the
+      // contract is "null if it cannot be captured", so swallow and resolve null
+      // rather than propagating — consistent with captureSliceJpeg's own null path.
+      try {
+        await h.setStack([imageId]);
+        if (destroyed || renderOpts.signal?.aborted) return null;
+        return await h.captureSliceJpeg(quality);
+      } catch {
+        return null;
+      }
     },
     destroy() {
       if (destroyed) return;

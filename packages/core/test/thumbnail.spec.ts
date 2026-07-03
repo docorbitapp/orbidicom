@@ -45,6 +45,12 @@ describe("createThumbnailer", () => {
     await expect(t.render("x")).resolves.toBeNull();
   });
 
+  it("returns null when the underlying stack fails to load", async () => {
+    h.handle.setStack.mockRejectedValueOnce(new Error("decode failed"));
+    const t = createThumbnailer();
+    await expect(t.render("bad")).resolves.toBeNull();
+  });
+
   it("returns null after destroy and does not render again", async () => {
     const t = createThumbnailer();
     await t.render("a");
