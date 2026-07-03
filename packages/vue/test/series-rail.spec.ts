@@ -90,17 +90,59 @@ describe("SeriesRail", () => {
       disconnect() {}
     }
     vi.stubGlobal("IntersectionObserver", FakeIO);
-    const provider = providerStub("blob:mock/thumb");
-    const w = mount(SeriesRail, { props: { series, active: 0, provider } });
-    await flushPromises();
-    expect(provider.get).not.toHaveBeenCalled(); // observed, not loaded
-    expect(observedEls.length).toBe(series.length);
-    trigger([{ target: observedEls[0], isIntersecting: true }]); // first row scrolls in
-    await flushPromises();
-    expect(provider.get).toHaveBeenCalledTimes(1);
-    expect(w.findAll(".rail__item")[0].find(".rail__img").attributes("src")).toBe(
-      "blob:mock/thumb",
-    );
-    vi.unstubAllGlobals();
+    try {
+      const provider = providerStub("blob:mock/thumb");
+      const w = mount(SeriesRail, { props: { series, active: 0, provider } });
+      await flushPromises();
+      expect(provider.get).not.toHaveBeenCalled(); // observed, not loaded
+      expect(observedEls.length).toBe(series.length);
+      trigger([{ target: observedEls[0], isIntersecting: true }]); // first row scrolls in
+      await flushPromises();
+      expect(provider.get).toHaveBeenCalledTimes(1);
+      expect(w.findAll(".rail__item")[0].find(".rail__img").attributes("src")).toBe(
+        "blob:mock/thumb",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("disconnects and rebuilds the observer when the study (series list) is replaced", async () => {
+    let disconnects = 0;
+    let constructed = 0;
+    class FakeIO {
+      constructor() {
+        constructed++;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {
+        disconnects++;
+      }
+    }
+    vi.stubGlobal("IntersectionObserver", FakeIO);
+    try {
+      const w = mount(SeriesRail, {
+        props: { series, active: 0, provider: providerStub("blob:x") },
+      });
+      await flushPromises();
+      expect(constructed).toBe(1);
+      // Switch studies: brand-new series array with different UIDs.
+      await w.setProps({
+        series: [
+          {
+            seriesInstanceUID: "NEW1",
+            modality: "CT",
+            seriesDescription: "New",
+            numberOfFrames: 5,
+          },
+        ],
+      });
+      await flushPromises();
+      expect(disconnects).toBe(1); // old observer released
+      expect(constructed).toBe(2); // fresh observer for the new study
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

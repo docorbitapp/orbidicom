@@ -125,14 +125,11 @@ function bindThumb(el: Element | null, s: SeriesSummary) {
   else load(uid); // no IntersectionObserver (e.g. jsdom / SSR) → load eagerly
 }
 
-// Construct the observer in `onBeforeMount`, not `onMounted`: Vue invokes each
-// row's function ref synchronously during the first DOM patch, which happens
-// *before* `onMounted`. If `io` were still null then, every `bindThumb` would
-// take the eager `else load(uid)` path and mark the row `observed`, so it would
-// never be observed once `io` existed — the lazy path would be dead code.
-onBeforeMount(() => {
-  if (typeof IntersectionObserver === "undefined") return;
-  io = new IntersectionObserver(
+// The callback closes over the `let io` variable, so after a reassignment it
+// references the current observer; a disconnected old one won't fire.
+function createObserver(): IntersectionObserver | null {
+  if (typeof IntersectionObserver === "undefined") return null;
+  return new IntersectionObserver(
     (entries) => {
       for (const e of entries) {
         if (!e.isIntersecting) continue;
@@ -145,14 +142,27 @@ onBeforeMount(() => {
     },
     { root: null, rootMargin: "200px" },
   );
+}
+
+// Construct the observer in `onBeforeMount`, not `onMounted`: Vue invokes each
+// row's function ref synchronously during the first DOM patch, which happens
+// *before* `onMounted`. If `io` were still null then, every `bindThumb` would
+// take the eager `else load(uid)` path and mark the row `observed`, so it would
+// never be observed once `io` existed — the lazy path would be dead code.
+onBeforeMount(() => {
+  io = createObserver();
 });
 
 // A new study replaces props.series wholesale (identity change). In-place count
-// reconciliation mutates existing objects and won't trip this. Reset per-series
-// preview state so stale UIDs don't accumulate across studies.
+// reconciliation mutates existing objects and won't trip this. Reset preview
+// state AND rebuild the observer so it stops referencing the old study's
+// now-detached rows (the long-lived singleton's `onUnmounted` never fires
+// mid-session, so a stale observer would pin every offscreen element forever).
 watch(
   () => props.series,
   () => {
+    io?.disconnect();
+    io = createObserver();
     observed.clear();
     seriesByUid.clear();
     for (const k of Object.keys(states)) delete states[k];
