@@ -66,7 +66,10 @@ const h = vi.hoisted(() => {
         listeners.set(type, [...(listeners.get(type) ?? []), fn]);
       }),
       removeEventListener: vi.fn((type: string, fn: (e: Event) => void) => {
-        listeners.set(type, (listeners.get(type) ?? []).filter((f) => f !== fn));
+        listeners.set(
+          type,
+          (listeners.get(type) ?? []).filter((f) => f !== fn),
+        );
       }),
     },
   };
